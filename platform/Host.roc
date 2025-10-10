@@ -33,6 +33,8 @@ hosted [
     hard_link!,
     path_type!,
     posix_time!,
+    random_u64!,
+    random_u32!,
     send_request!,
     set_cwd!,
     sleep_millis!,
@@ -146,3 +148,6 @@ env_dict! : {} => List (Str, Str)
 env_var! : Str => Result Str {}
 exe_path! : {} => Result (List U8) {}
 set_cwd! : List U8 => Result {} {}
+
+random_u64! : {} => Result U64 InternalIOErr.IOErrFromHost
+random_u32! : {} => Result U32 InternalIOErr.IOErrFromHost
