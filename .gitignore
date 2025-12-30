@@ -67,13 +67,19 @@ dirExampleD
 # see ci/all_tests.sh
 all_tests_output.log
 
+# Old build artifacts (platform/*.a was pre-migration location)
 platform/*.a
 
 ci/check_all_exposed_funs_tested
 ci/check_cargo_versions_match
 
-# glue generated files
-crates/roc_std
-
 # build script artifacts
 build
+
+# Platform prebuilt binaries - these SHOULD be tracked
+# The platform/targets/ directory contains prebuilt static libraries
+# that need to be committed for distribution
+!platform/targets/
+
+# Cargo lock for reproducible builds
+!Cargo.lock
