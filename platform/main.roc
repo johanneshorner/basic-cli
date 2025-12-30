@@ -1,5 +1,5 @@
 platform ""
-    requires {} { main! : List(Str) => Try({}, [Exit(I32)]) }
+    requires {} { main! : List(Str) => Try({}, [Exit(I32), ..others]) }
     exposes [Dir, Env, File, Path, Stdin, Stdout, Stderr]
     packages {}
     provides { main_for_host! : "main_for_host" }
@@ -22,33 +22,12 @@ import Stdout
 import Stderr
 
 main_for_host! : List(Str) => I32
-main_for_host! = |args| {
-    result = main!(args)
-    match result {
+main_for_host! = |args|
+    match main!(args) {
         Ok({}) => 0
         Err(Exit(code)) => code
-        # TODO enable when open tag union supported in platform header
-        #Err(err) => {
-        #    err_str = Str.inspect(err)
-
-        #    # Inspect adds parentheses around errors, which are unnecessary here.
-        #    clean_err_str =
-        #        if Str.starts_with(err_str, "(") and Str.ends_with(err_str, ")") {
-        #            err_str
-        #                .drop_prefix("(")
-        #                .drop_suffix(")")
-        #        } else {
-        #            err_str
-        #        }
-
-        #    help_msg =
-        #        \\
-        #        \\Program exited with error:
-        #        \\
-        #        \\    ${clean_err_str}
-
-        #    Stderr.line!(help_msg)
-        #    1
-        #}
+        Err(other) => {
+            Stderr.line!("Program exited with error: ${Str.inspect(other)}")
+            1
+        }
     }
-}

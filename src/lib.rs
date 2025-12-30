@@ -237,59 +237,103 @@ extern "C" fn roc_crashed_fn(roc_crashed: *const RocCrashed, _env: *mut c_void) 
 // ============================================================================
 
 /// Hosted function: Dir.create! (index 0)
-/// Takes Str, returns {}
+/// Takes Str, returns Try({}, [DirErr(IOErr)])
 extern "C" fn hosted_dir_create(
-    _ops: *const RocOps,
-    _ret_ptr: *mut c_void,
+    ops: *const RocOps,
+    ret_ptr: *mut c_void,
     args_ptr: *mut c_void,
 ) {
-    unsafe {
+    let roc_ops = unsafe { &*ops };
+    let result = unsafe {
         let path = args_ptr as *const RocStr;
-        let _ = fs::create_dir((*path).as_str());
+        fs::create_dir((*path).as_str())
+    };
+    let try_result: TryUnitDirErr = match result {
+        Ok(()) => RocTry::ok(()),
+        Err(e) => {
+            let io_err = roc_io_error::IOErr::from_io_error(&e, roc_ops);
+            RocTry::err(RocSingleTagWrapper::new(io_err))
+        }
+    };
+    unsafe {
+        std::ptr::write(ret_ptr as *mut TryUnitDirErr, try_result);
     }
 }
 
 /// Hosted function: Dir.create_all! (index 1)
-/// Takes Str, returns {}
+/// Takes Str, returns Try({}, [DirErr(IOErr)])
 extern "C" fn hosted_dir_create_all(
-    _ops: *const RocOps,
-    _ret_ptr: *mut c_void,
+    ops: *const RocOps,
+    ret_ptr: *mut c_void,
     args_ptr: *mut c_void,
 ) {
-    unsafe {
+    let roc_ops = unsafe { &*ops };
+    let result = unsafe {
         let path = args_ptr as *const RocStr;
-        let _ = fs::create_dir_all((*path).as_str());
+        fs::create_dir_all((*path).as_str())
+    };
+    let try_result: TryUnitDirErr = match result {
+        Ok(()) => RocTry::ok(()),
+        Err(e) => {
+            let io_err = roc_io_error::IOErr::from_io_error(&e, roc_ops);
+            RocTry::err(RocSingleTagWrapper::new(io_err))
+        }
+    };
+    unsafe {
+        std::ptr::write(ret_ptr as *mut TryUnitDirErr, try_result);
     }
 }
 
 /// Hosted function: Dir.delete_all! (index 2)
-/// Takes Str, returns {}
+/// Takes Str, returns Try({}, [DirErr(IOErr)])
 extern "C" fn hosted_dir_delete_all(
-    _ops: *const RocOps,
-    _ret_ptr: *mut c_void,
+    ops: *const RocOps,
+    ret_ptr: *mut c_void,
     args_ptr: *mut c_void,
 ) {
-    unsafe {
+    let roc_ops = unsafe { &*ops };
+    let result = unsafe {
         let path = args_ptr as *const RocStr;
-        let _ = fs::remove_dir_all((*path).as_str());
+        fs::remove_dir_all((*path).as_str())
+    };
+    let try_result: TryUnitDirErr = match result {
+        Ok(()) => RocTry::ok(()),
+        Err(e) => {
+            let io_err = roc_io_error::IOErr::from_io_error(&e, roc_ops);
+            RocTry::err(RocSingleTagWrapper::new(io_err))
+        }
+    };
+    unsafe {
+        std::ptr::write(ret_ptr as *mut TryUnitDirErr, try_result);
     }
 }
 
 /// Hosted function: Dir.delete_empty! (index 3)
-/// Takes Str, returns {}
+/// Takes Str, returns Try({}, [DirErr(IOErr)])
 extern "C" fn hosted_dir_delete_empty(
-    _ops: *const RocOps,
-    _ret_ptr: *mut c_void,
+    ops: *const RocOps,
+    ret_ptr: *mut c_void,
     args_ptr: *mut c_void,
 ) {
-    unsafe {
+    let roc_ops = unsafe { &*ops };
+    let result = unsafe {
         let path = args_ptr as *const RocStr;
-        let _ = fs::remove_dir((*path).as_str());
+        fs::remove_dir((*path).as_str())
+    };
+    let try_result: TryUnitDirErr = match result {
+        Ok(()) => RocTry::ok(()),
+        Err(e) => {
+            let io_err = roc_io_error::IOErr::from_io_error(&e, roc_ops);
+            RocTry::err(RocSingleTagWrapper::new(io_err))
+        }
+    };
+    unsafe {
+        std::ptr::write(ret_ptr as *mut TryUnitDirErr, try_result);
     }
 }
 
 /// Hosted function: Dir.list! (index 4)
-/// Takes Str, returns List(Str)
+/// Takes Str, returns Try(List(Str), [DirErr(IOErr)])
 extern "C" fn hosted_dir_list(
     ops: *const RocOps,
     ret_ptr: *mut c_void,
@@ -301,23 +345,29 @@ extern "C" fn hosted_dir_list(
         (*args).as_str().to_string()
     };
 
-    let entries: Vec<String> = fs::read_dir(&path)
-        .map(|rd| {
-            rd.filter_map(|entry| {
-                entry.ok().map(|e| e.path().to_string_lossy().into_owned())
-            })
-            .collect()
-        })
-        .unwrap_or_default();
-
-    let mut list = RocList::with_capacity(entries.len(), roc_ops);
-    for entry in entries {
-        let roc_str = RocStr::from_str(&entry, roc_ops);
-        list.push(roc_str, roc_ops);
-    }
+    let result = fs::read_dir(&path);
+    let try_result: TryListStrDirErr = match result {
+        Ok(rd) => {
+            let entries: Vec<String> = rd
+                .filter_map(|entry| {
+                    entry.ok().map(|e| e.path().to_string_lossy().into_owned())
+                })
+                .collect();
+            let mut list = RocList::with_capacity(entries.len(), roc_ops);
+            for entry in entries {
+                let roc_str = RocStr::from_str(&entry, roc_ops);
+                list.push(roc_str, roc_ops);
+            }
+            RocTry::ok(list)
+        }
+        Err(e) => {
+            let io_err = roc_io_error::IOErr::from_io_error(&e, roc_ops);
+            RocTry::err(RocSingleTagWrapper::new(io_err))
+        }
+    };
 
     unsafe {
-        *(ret_ptr as *mut RocList<RocStr>) = list;
+        std::ptr::write(ret_ptr as *mut TryListStrDirErr, try_result);
     }
 }
 
@@ -375,21 +425,32 @@ extern "C" fn hosted_env_var(
 }
 
 /// Hosted function: File.delete! (index 8)
-/// Takes Str (path), returns {}
+/// Takes Str (path), returns Try({}, [FileErr(IOErr)])
 extern "C" fn hosted_file_delete(
-    _ops: *const RocOps,
-    _ret_ptr: *mut c_void,
+    ops: *const RocOps,
+    ret_ptr: *mut c_void,
     args_ptr: *mut c_void,
 ) {
+    let roc_ops = unsafe { &*ops };
     let path = unsafe {
         let args = args_ptr as *const RocStr;
         (*args).as_str()
     };
-    let _ = fs::remove_file(path);
+    let result = fs::remove_file(path);
+    let try_result: TryUnitFileErr = match result {
+        Ok(()) => RocTry::ok(()),
+        Err(e) => {
+            let io_err = roc_io_error::IOErr::from_io_error(&e, roc_ops);
+            RocTry::err(RocSingleTagWrapper::new(io_err))
+        }
+    };
+    unsafe {
+        std::ptr::write(ret_ptr as *mut TryUnitFileErr, try_result);
+    }
 }
 
 /// Hosted function: File.read_bytes! (index 9)
-/// Takes Str (path), returns List(U8)
+/// Takes Str (path), returns Try(List(U8), [FileErr(IOErr)])
 extern "C" fn hosted_file_read_bytes(
     ops: *const RocOps,
     ret_ptr: *mut c_void,
@@ -400,18 +461,27 @@ extern "C" fn hosted_file_read_bytes(
         let args = args_ptr as *const RocStr;
         (*args).as_str()
     };
-    let bytes = fs::read(path).unwrap_or_default();
-    let mut list = RocList::with_capacity(bytes.len(), roc_ops);
-    for byte in bytes {
-        list.push(byte, roc_ops);
-    }
+    let result = fs::read(path);
+    let try_result: TryBytesFileErr = match result {
+        Ok(bytes) => {
+            let mut list = RocList::with_capacity(bytes.len(), roc_ops);
+            for byte in bytes {
+                list.push(byte, roc_ops);
+            }
+            RocTry::ok(list)
+        }
+        Err(e) => {
+            let io_err = roc_io_error::IOErr::from_io_error(&e, roc_ops);
+            RocTry::err(RocSingleTagWrapper::new(io_err))
+        }
+    };
     unsafe {
-        *(ret_ptr as *mut RocList<u8>) = list;
+        std::ptr::write(ret_ptr as *mut TryBytesFileErr, try_result);
     }
 }
 
 /// Hosted function: File.read_utf8! (index 10)
-/// Takes Str (path), returns Str
+/// Takes Str (path), returns Try(Str, [FileErr(IOErr)])
 extern "C" fn hosted_file_read_utf8(
     ops: *const RocOps,
     ret_ptr: *mut c_void,
@@ -422,40 +492,71 @@ extern "C" fn hosted_file_read_utf8(
         let args = args_ptr as *const RocStr;
         (*args).as_str()
     };
-    let content = fs::read_to_string(path).unwrap_or_default();
-    let roc_str = RocStr::from_str(&content, roc_ops);
+    let result = fs::read_to_string(path);
+    let try_result: TryStrFileErr = match result {
+        Ok(content) => {
+            let roc_str = RocStr::from_str(&content, roc_ops);
+            RocTry::ok(roc_str)
+        }
+        Err(e) => {
+            let io_err = roc_io_error::IOErr::from_io_error(&e, roc_ops);
+            RocTry::err(RocSingleTagWrapper::new(io_err))
+        }
+    };
     unsafe {
-        *(ret_ptr as *mut RocStr) = roc_str;
+        std::ptr::write(ret_ptr as *mut TryStrFileErr, try_result);
     }
 }
 
 /// Hosted function: File.write_bytes! (index 11)
-/// Takes (Str, List(U8)), returns {}
+/// Takes (Str, List(U8)), returns Try({}, [FileErr(IOErr)])
 extern "C" fn hosted_file_write_bytes(
-    _ops: *const RocOps,
-    _ret_ptr: *mut c_void,
+    ops: *const RocOps,
+    ret_ptr: *mut c_void,
     args_ptr: *mut c_void,
 ) {
-    unsafe {
+    let roc_ops = unsafe { &*ops };
+    let result = unsafe {
         // Args are (Str, List(U8)) - a tuple/record
         let args = args_ptr as *const (RocStr, RocList<u8>);
         let (path, bytes) = &*args;
-        let _ = fs::write(path.as_str(), bytes.as_slice());
+        fs::write(path.as_str(), bytes.as_slice())
+    };
+    let try_result: TryUnitFileErr = match result {
+        Ok(()) => RocTry::ok(()),
+        Err(e) => {
+            let io_err = roc_io_error::IOErr::from_io_error(&e, roc_ops);
+            RocTry::err(RocSingleTagWrapper::new(io_err))
+        }
+    };
+    unsafe {
+        std::ptr::write(ret_ptr as *mut TryUnitFileErr, try_result);
     }
 }
 
 /// Hosted function: File.write_utf8! (index 12)
-/// Takes (Str, Str), returns {}
+/// Takes (Str, Str), returns Try({}, [FileErr(IOErr)])
 extern "C" fn hosted_file_write_utf8(
-    _ops: *const RocOps,
-    _ret_ptr: *mut c_void,
+    ops: *const RocOps,
+    ret_ptr: *mut c_void,
     args_ptr: *mut c_void,
 ) {
-    unsafe {
+    let roc_ops = unsafe { &*ops };
+    let result = unsafe {
         // Args are (Str, Str) - a tuple
         let args = args_ptr as *const (RocStr, RocStr);
         let (path, content) = &*args;
-        let _ = fs::write(path.as_str(), content.as_str());
+        fs::write(path.as_str(), content.as_str())
+    };
+    let try_result: TryUnitFileErr = match result {
+        Ok(()) => RocTry::ok(()),
+        Err(e) => {
+            let io_err = roc_io_error::IOErr::from_io_error(&e, roc_ops);
+            RocTry::err(RocSingleTagWrapper::new(io_err))
+        }
+    };
+    unsafe {
+        std::ptr::write(ret_ptr as *mut TryUnitFileErr, try_result);
     }
 }
 
@@ -464,6 +565,27 @@ type PathErr = RocSingleTagWrapper<roc_io_error::IOErr>;
 
 /// Type alias for Try(Bool, [PathErr(IOErr)]) - used by Path.is_file!, etc.
 type TryBoolPathErr = RocTry<bool, PathErr>;
+
+/// Type alias for the File error type: [FileErr(IOErr)] in Roc
+type FileErr = RocSingleTagWrapper<roc_io_error::IOErr>;
+
+/// Type alias for Try({}, [FileErr(IOErr)]) - used by File.write_*, File.delete!
+type TryUnitFileErr = RocTry<(), FileErr>;
+
+/// Type alias for Try(Str, [FileErr(IOErr)]) - used by File.read_utf8!
+type TryStrFileErr = RocTry<RocStr, FileErr>;
+
+/// Type alias for Try(List(U8), [FileErr(IOErr)]) - used by File.read_bytes!
+type TryBytesFileErr = RocTry<RocList<u8>, FileErr>;
+
+/// Type alias for the Dir error type: [DirErr(IOErr)] in Roc
+type DirErr = RocSingleTagWrapper<roc_io_error::IOErr>;
+
+/// Type alias for Try({}, [DirErr(IOErr)]) - used by Dir.create!, etc.
+type TryUnitDirErr = RocTry<(), DirErr>;
+
+/// Type alias for Try(List(Str), [DirErr(IOErr)]) - used by Dir.list!
+type TryListStrDirErr = RocTry<RocList<RocStr>, DirErr>;
 
 /// Write a Try(Bool, [PathErr(IOErr)]) result to ret_ptr using RocTry
 unsafe fn write_try_bool_result(
