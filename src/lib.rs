@@ -329,7 +329,24 @@ extern "C" fn hosted_stderr_line(
     }
 }
 
-/// Hosted function: Stdin.line! (index 9)
+/// Hosted function: Stderr.write! (index 9)
+/// Takes Str, returns {}
+extern "C" fn hosted_stderr_write(
+    _ops: *const RocOps,
+    _ret_ptr: *mut c_void,
+    args_ptr: *mut c_void,
+) {
+    unsafe {
+        // RocStr passed from Roc - Roc manages its memory, we just read it
+        let args = args_ptr as *const RocStr;
+        let message = (*args).as_str();
+        let _ = write!(io::stderr(), "{}", message);
+        let _ = io::stderr().flush();
+        // DO NOT call decref - Roc owns this memory
+    }
+}
+
+/// Hosted function: Stdin.line! (index 10)
 /// Takes {}, returns Str
 extern "C" fn hosted_stdin_line(
     ops: *const RocOps,
@@ -350,7 +367,7 @@ extern "C" fn hosted_stdin_line(
     }
 }
 
-/// Hosted function: Stdout.line! (index 10)
+/// Hosted function: Stdout.line! (index 11)
 /// Takes Str, returns {}
 extern "C" fn hosted_stdout_line(
     _ops: *const RocOps,
@@ -367,8 +384,25 @@ extern "C" fn hosted_stdout_line(
     }
 }
 
+/// Hosted function: Stdout.write! (index 12)
+/// Takes Str, returns {}
+extern "C" fn hosted_stdout_write(
+    _ops: *const RocOps,
+    _ret_ptr: *mut c_void,
+    args_ptr: *mut c_void,
+) {
+    unsafe {
+        // RocStr passed from Roc - Roc manages its memory, we just read it
+        let args = args_ptr as *const RocStr;
+        let message = (*args).as_str();
+        let _ = write!(io::stdout(), "{}", message);
+        let _ = io::stdout().flush();
+        // DO NOT call decref - Roc owns this memory
+    }
+}
+
 /// Array of hosted function pointers, sorted alphabetically by fully-qualified name.
-static HOSTED_FNS: [HostedFn; 11] = [
+static HOSTED_FNS: [HostedFn; 13] = [
     hosted_env_cwd,         // Env.cwd! (index 0)
     hosted_env_exe_path,    // Env.exe_path! (index 1)
     hosted_env_var,         // Env.var! (index 2)
@@ -378,8 +412,10 @@ static HOSTED_FNS: [HostedFn; 11] = [
     hosted_file_write_bytes, // File.write_bytes! (index 6)
     hosted_file_write_utf8, // File.write_utf8! (index 7)
     hosted_stderr_line,     // Stderr.line! (index 8)
-    hosted_stdin_line,      // Stdin.line! (index 9)
-    hosted_stdout_line,     // Stdout.line! (index 10)
+    hosted_stderr_write,    // Stderr.write! (index 9)
+    hosted_stdin_line,      // Stdin.line! (index 10)
+    hosted_stdout_line,     // Stdout.line! (index 11)
+    hosted_stdout_write,    // Stdout.write! (index 12)
 ];
 
 /// Build a RocList<RocStr> from command-line arguments.

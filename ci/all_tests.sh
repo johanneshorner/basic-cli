@@ -18,6 +18,7 @@ MIGRATED_EXAMPLES=(
     "stdin-basic"
     "env-test"
     "file-test"
+    "print-test"
 )
 
 # Build the platform using build.sh
