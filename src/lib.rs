@@ -174,7 +174,92 @@ extern "C" fn roc_crashed_fn(roc_crashed: *const RocCrashed, _env: *mut c_void) 
 // Hosted Functions (sorted alphabetically by fully-qualified name)
 // ============================================================================
 
-/// Hosted function: Env.cwd! (index 0)
+/// Hosted function: Dir.create! (index 0)
+/// Takes Str, returns {}
+extern "C" fn hosted_dir_create(
+    _ops: *const RocOps,
+    _ret_ptr: *mut c_void,
+    args_ptr: *mut c_void,
+) {
+    unsafe {
+        let path = args_ptr as *const RocStr;
+        let _ = fs::create_dir((*path).as_str());
+    }
+}
+
+/// Hosted function: Dir.create_all! (index 1)
+/// Takes Str, returns {}
+extern "C" fn hosted_dir_create_all(
+    _ops: *const RocOps,
+    _ret_ptr: *mut c_void,
+    args_ptr: *mut c_void,
+) {
+    unsafe {
+        let path = args_ptr as *const RocStr;
+        let _ = fs::create_dir_all((*path).as_str());
+    }
+}
+
+/// Hosted function: Dir.delete_all! (index 2)
+/// Takes Str, returns {}
+extern "C" fn hosted_dir_delete_all(
+    _ops: *const RocOps,
+    _ret_ptr: *mut c_void,
+    args_ptr: *mut c_void,
+) {
+    unsafe {
+        let path = args_ptr as *const RocStr;
+        let _ = fs::remove_dir_all((*path).as_str());
+    }
+}
+
+/// Hosted function: Dir.delete_empty! (index 3)
+/// Takes Str, returns {}
+extern "C" fn hosted_dir_delete_empty(
+    _ops: *const RocOps,
+    _ret_ptr: *mut c_void,
+    args_ptr: *mut c_void,
+) {
+    unsafe {
+        let path = args_ptr as *const RocStr;
+        let _ = fs::remove_dir((*path).as_str());
+    }
+}
+
+/// Hosted function: Dir.list! (index 4)
+/// Takes Str, returns List(Str)
+extern "C" fn hosted_dir_list(
+    ops: *const RocOps,
+    ret_ptr: *mut c_void,
+    args_ptr: *mut c_void,
+) {
+    let roc_ops = unsafe { &*ops };
+    let path = unsafe {
+        let args = args_ptr as *const RocStr;
+        (*args).as_str().to_string()
+    };
+
+    let entries: Vec<String> = fs::read_dir(&path)
+        .map(|rd| {
+            rd.filter_map(|entry| {
+                entry.ok().map(|e| e.path().to_string_lossy().into_owned())
+            })
+            .collect()
+        })
+        .unwrap_or_default();
+
+    let mut list = RocList::with_capacity(entries.len(), roc_ops);
+    for entry in entries {
+        let roc_str = RocStr::from_str(&entry, roc_ops);
+        list.push(roc_str, roc_ops);
+    }
+
+    unsafe {
+        *(ret_ptr as *mut RocList<RocStr>) = list;
+    }
+}
+
+/// Hosted function: Env.cwd! (index 5)
 /// Takes {}, returns Str
 extern "C" fn hosted_env_cwd(
     ops: *const RocOps,
@@ -191,7 +276,7 @@ extern "C" fn hosted_env_cwd(
     }
 }
 
-/// Hosted function: Env.exe_path! (index 1)
+/// Hosted function: Env.exe_path! (index 6)
 /// Takes {}, returns Str
 extern "C" fn hosted_env_exe_path(
     ops: *const RocOps,
@@ -208,7 +293,7 @@ extern "C" fn hosted_env_exe_path(
     }
 }
 
-/// Hosted function: Env.var! (index 2)
+/// Hosted function: Env.var! (index 7)
 /// Takes Str, returns Str
 extern "C" fn hosted_env_var(
     ops: *const RocOps,
@@ -227,7 +312,7 @@ extern "C" fn hosted_env_var(
     }
 }
 
-/// Hosted function: File.delete! (index 3)
+/// Hosted function: File.delete! (index 8)
 /// Takes Str (path), returns {}
 extern "C" fn hosted_file_delete(
     _ops: *const RocOps,
@@ -241,7 +326,7 @@ extern "C" fn hosted_file_delete(
     let _ = fs::remove_file(path);
 }
 
-/// Hosted function: File.read_bytes! (index 4)
+/// Hosted function: File.read_bytes! (index 9)
 /// Takes Str (path), returns List(U8)
 extern "C" fn hosted_file_read_bytes(
     ops: *const RocOps,
@@ -263,7 +348,7 @@ extern "C" fn hosted_file_read_bytes(
     }
 }
 
-/// Hosted function: File.read_utf8! (index 5)
+/// Hosted function: File.read_utf8! (index 10)
 /// Takes Str (path), returns Str
 extern "C" fn hosted_file_read_utf8(
     ops: *const RocOps,
@@ -282,7 +367,7 @@ extern "C" fn hosted_file_read_utf8(
     }
 }
 
-/// Hosted function: File.write_bytes! (index 6)
+/// Hosted function: File.write_bytes! (index 11)
 /// Takes (Str, List(U8)), returns {}
 extern "C" fn hosted_file_write_bytes(
     _ops: *const RocOps,
@@ -297,7 +382,7 @@ extern "C" fn hosted_file_write_bytes(
     }
 }
 
-/// Hosted function: File.write_utf8! (index 7)
+/// Hosted function: File.write_utf8! (index 12)
 /// Takes (Str, Str), returns {}
 extern "C" fn hosted_file_write_utf8(
     _ops: *const RocOps,
@@ -312,7 +397,7 @@ extern "C" fn hosted_file_write_utf8(
     }
 }
 
-/// Hosted function: Stderr.line! (index 8)
+/// Hosted function: Stderr.line! (index 13)
 /// Takes Str, returns {}
 extern "C" fn hosted_stderr_line(
     _ops: *const RocOps,
@@ -329,7 +414,7 @@ extern "C" fn hosted_stderr_line(
     }
 }
 
-/// Hosted function: Stderr.write! (index 9)
+/// Hosted function: Stderr.write! (index 14)
 /// Takes Str, returns {}
 extern "C" fn hosted_stderr_write(
     _ops: *const RocOps,
@@ -346,7 +431,7 @@ extern "C" fn hosted_stderr_write(
     }
 }
 
-/// Hosted function: Stdin.line! (index 10)
+/// Hosted function: Stdin.line! (index 15)
 /// Takes {}, returns Str
 extern "C" fn hosted_stdin_line(
     ops: *const RocOps,
@@ -367,7 +452,7 @@ extern "C" fn hosted_stdin_line(
     }
 }
 
-/// Hosted function: Stdout.line! (index 11)
+/// Hosted function: Stdout.line! (index 16)
 /// Takes Str, returns {}
 extern "C" fn hosted_stdout_line(
     _ops: *const RocOps,
@@ -384,7 +469,7 @@ extern "C" fn hosted_stdout_line(
     }
 }
 
-/// Hosted function: Stdout.write! (index 12)
+/// Hosted function: Stdout.write! (index 17)
 /// Takes Str, returns {}
 extern "C" fn hosted_stdout_write(
     _ops: *const RocOps,
@@ -402,20 +487,25 @@ extern "C" fn hosted_stdout_write(
 }
 
 /// Array of hosted function pointers, sorted alphabetically by fully-qualified name.
-static HOSTED_FNS: [HostedFn; 13] = [
-    hosted_env_cwd,         // Env.cwd! (index 0)
-    hosted_env_exe_path,    // Env.exe_path! (index 1)
-    hosted_env_var,         // Env.var! (index 2)
-    hosted_file_delete,     // File.delete! (index 3)
-    hosted_file_read_bytes, // File.read_bytes! (index 4)
-    hosted_file_read_utf8,  // File.read_utf8! (index 5)
-    hosted_file_write_bytes, // File.write_bytes! (index 6)
-    hosted_file_write_utf8, // File.write_utf8! (index 7)
-    hosted_stderr_line,     // Stderr.line! (index 8)
-    hosted_stderr_write,    // Stderr.write! (index 9)
-    hosted_stdin_line,      // Stdin.line! (index 10)
-    hosted_stdout_line,     // Stdout.line! (index 11)
-    hosted_stdout_write,    // Stdout.write! (index 12)
+static HOSTED_FNS: [HostedFn; 18] = [
+    hosted_dir_create,      // Dir.create! (index 0)
+    hosted_dir_create_all,  // Dir.create_all! (index 1)
+    hosted_dir_delete_all,  // Dir.delete_all! (index 2)
+    hosted_dir_delete_empty, // Dir.delete_empty! (index 3)
+    hosted_dir_list,        // Dir.list! (index 4)
+    hosted_env_cwd,         // Env.cwd! (index 5)
+    hosted_env_exe_path,    // Env.exe_path! (index 6)
+    hosted_env_var,         // Env.var! (index 7)
+    hosted_file_delete,     // File.delete! (index 8)
+    hosted_file_read_bytes, // File.read_bytes! (index 9)
+    hosted_file_read_utf8,  // File.read_utf8! (index 10)
+    hosted_file_write_bytes, // File.write_bytes! (index 11)
+    hosted_file_write_utf8, // File.write_utf8! (index 12)
+    hosted_stderr_line,     // Stderr.line! (index 13)
+    hosted_stderr_write,    // Stderr.write! (index 14)
+    hosted_stdin_line,      // Stdin.line! (index 15)
+    hosted_stdout_line,     // Stdout.line! (index 16)
+    hosted_stdout_write,    // Stdout.write! (index 17)
 ];
 
 /// Build a RocList<RocStr> from command-line arguments.

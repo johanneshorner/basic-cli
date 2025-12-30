@@ -19,6 +19,7 @@ MIGRATED_EXAMPLES=(
     "env-test"
     "file-test"
     "print-test"
+    "dir-test"
 )
 
 # Build the platform using build.sh
