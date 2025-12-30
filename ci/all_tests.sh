@@ -20,6 +20,7 @@ MIGRATED_EXAMPLES=(
     "file-test"
     "print-test"
     "dir-test"
+    "path"
 )
 
 # Build the platform using build.sh

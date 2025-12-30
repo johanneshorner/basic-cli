@@ -19,6 +19,14 @@ name = "roc_host"
 version = "0.0.1"
 dependencies = [
  "libc",
+ "roc_io_error",
+ "roc_std_new",
+]
+
+[[package]]
+name = "roc_io_error"
+version = "0.0.1"
+dependencies = [
  "roc_std_new",
 ]
 

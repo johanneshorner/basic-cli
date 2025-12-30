@@ -10,6 +10,68 @@ use roc_std_new::{
     RocList, RocOps, RocRealloc, RocStr,
 };
 
+/// Roc Try/Result type layout:
+/// - Payload at offset 0 (sized to max of Ok/Err payloads)
+/// - Discriminant immediately after payload (no padding for discriminant)
+/// - Err = 0, Ok = 1 (alphabetically sorted)
+///
+/// IMPORTANT: Single-variant tag unions like [PathErr(IOErr)] do NOT elide
+/// their discriminant in Roc. Use `RocSingleTagWrapper<T>` to represent them.
+#[repr(C)]
+pub struct RocTry<T, E> {
+    payload: RocTryPayload<T, E>,
+    discriminant: u8,
+}
+
+#[repr(C)]
+pub union RocTryPayload<T, E> {
+    ok: core::mem::ManuallyDrop<T>,
+    err: core::mem::ManuallyDrop<E>,
+}
+
+impl<T, E> RocTry<T, E> {
+    /// Create an Ok result (discriminant = 1)
+    pub fn ok(value: T) -> Self {
+        Self {
+            payload: RocTryPayload {
+                ok: core::mem::ManuallyDrop::new(value),
+            },
+            discriminant: 1, // Ok = 1
+        }
+    }
+
+    /// Create an Err result (discriminant = 0)
+    pub fn err(value: E) -> Self {
+        Self {
+            payload: RocTryPayload {
+                err: core::mem::ManuallyDrop::new(value),
+            },
+            discriminant: 0, // Err = 0
+        }
+    }
+}
+
+/// Wrapper for single-variant tag unions like [PathErr(IOErr)].
+///
+/// In Roc, single-variant tag unions do NOT elide their discriminant.
+/// This wrapper adds the discriminant byte that Roc expects.
+///
+/// Example: `[PathErr(IOErr)]` in Roc = `RocSingleTagWrapper<IOErr>` in Rust
+#[repr(C)]
+pub struct RocSingleTagWrapper<T> {
+    pub payload: T,
+    discriminant: u8, // Always 0 for single-variant
+}
+
+impl<T> RocSingleTagWrapper<T> {
+    pub fn new(payload: T) -> Self {
+        Self {
+            payload,
+            discriminant: 0, // Single variant is always index 0
+        }
+    }
+}
+
 /// Global flag to track if dbg or expect_failed was called.
 /// If set, program exits with non-zero code to prevent accidental commits.
 static DEBUG_OR_EXPECT_CALLED: AtomicBool = AtomicBool::new(false);
@@ -397,7 +459,151 @@ extern "C" fn hosted_file_write_utf8(
     }
 }
 
-/// Hosted function: Stderr.line! (index 13)
+/// Type alias for the Path error type: [PathErr(IOErr)] in Roc
+type PathErr = RocSingleTagWrapper<roc_io_error::IOErr>;
+
+/// Type alias for Try(Bool, [PathErr(IOErr)]) - used by Path.is_file!, etc.
+type TryBoolPathErr = RocTry<bool, PathErr>;
+
+/// Write a Try(Bool, [PathErr(IOErr)]) result to ret_ptr using RocTry
+unsafe fn write_try_bool_result(
+    ret_ptr: *mut c_void,
+    result: std::io::Result<bool>,
+    roc_ops: &RocOps,
+) {
+    let try_result: TryBoolPathErr = match result {
+        Ok(value) => RocTry::ok(value),
+        Err(e) => {
+            let io_err = roc_io_error::IOErr::from_io_error(&e, roc_ops);
+            RocTry::err(RocSingleTagWrapper::new(io_err))
+        }
+    };
+
+    // Write the result to ret_ptr
+    std::ptr::write(ret_ptr as *mut TryBoolPathErr, try_result);
+}
+
+/// Hosted function: Path.is_dir! (index 13)
+/// Takes Str, returns Try(Bool, [PathErr(IOErr)])
+extern "C" fn hosted_path_is_dir(
+    ops: *const RocOps,
+    ret_ptr: *mut c_void,
+    args_ptr: *mut c_void,
+) {
+    let roc_ops = unsafe { &*ops };
+    let result = unsafe {
+        let path = args_ptr as *const RocStr;
+        let path_str = (*path).as_str();
+        std::path::Path::new(path_str)
+            .symlink_metadata()
+            .map(|m| m.is_dir())
+    };
+
+    unsafe {
+        write_try_bool_result(ret_ptr, result, roc_ops);
+    }
+}
+
+/// Hosted function: Path.is_file! (index 14)
+/// Takes Str, returns Try(Bool, [PathErr(IOErr)])
+extern "C" fn hosted_path_is_file(
+    ops: *const RocOps,
+    ret_ptr: *mut c_void,
+    args_ptr: *mut c_void,
+) {
+    let roc_ops = unsafe { &*ops };
+    let result = unsafe {
+        let path = args_ptr as *const RocStr;
+        let path_str = (*path).as_str();
+        std::path::Path::new(path_str)
+            .symlink_metadata()
+            .map(|m| m.is_file())
+    };
+
+    unsafe {
+        write_try_bool_result(ret_ptr, result, roc_ops);
+    }
+}
+
+/// Hosted function: Path.is_sym_link! (index 15)
+/// Takes Str, returns Try(Bool, [PathErr(IOErr)])
+extern "C" fn hosted_path_is_sym_link(
+    ops: *const RocOps,
+    ret_ptr: *mut c_void,
+    args_ptr: *mut c_void,
+) {
+    let roc_ops = unsafe { &*ops };
+    let result = unsafe {
+        let path = args_ptr as *const RocStr;
+        let path_str = (*path).as_str();
+        std::path::Path::new(path_str)
+            .symlink_metadata()
+            .map(|m| m.is_symlink())
+    };
+
+    unsafe {
+        write_try_bool_result(ret_ptr, result, roc_ops);
+    }
+}
+
+/// PathType discriminant values (alphabetically sorted)
+/// IsDir=0, IsFile=1, IsSymLink=2
+#[repr(u8)]
+#[derive(Clone, Copy)]
+pub enum PathType {
+    IsDir = 0,
+    IsFile = 1,
+    IsSymLink = 2,
+}
+
+/// Type alias for Try(PathType, [PathErr(IOErr)]) - used by Path.type!
+type TryPathTypePathErr = RocTry<PathType, PathErr>;
+
+/// Write a Try(PathType, [PathErr(IOErr)]) result to ret_ptr using RocTry
+unsafe fn write_try_pathtype_result(
+    ret_ptr: *mut c_void,
+    result: std::io::Result<PathType>,
+    roc_ops: &RocOps,
+) {
+    let try_result: TryPathTypePathErr = match result {
+        Ok(path_type) => RocTry::ok(path_type),
+        Err(e) => {
+            let io_err = roc_io_error::IOErr::from_io_error(&e, roc_ops);
+            RocTry::err(RocSingleTagWrapper::new(io_err))
+        }
+    };
+
+    std::ptr::write(ret_ptr as *mut TryPathTypePathErr, try_result);
+}
+
+/// Hosted function: Path.type! (index 16)
+/// Takes Str, returns Try(PathType, [PathErr(IOErr)])
+extern "C" fn hosted_path_type(
+    ops: *const RocOps,
+    ret_ptr: *mut c_void,
+    args_ptr: *mut c_void,
+) {
+    let roc_ops = unsafe { &*ops };
+    let result = unsafe {
+        let path = args_ptr as *const RocStr;
+        let path_str = (*path).as_str();
+        std::path::Path::new(path_str).symlink_metadata().map(|m| {
+            if m.is_symlink() {
+                PathType::IsSymLink
+            } else if m.is_dir() {
+                PathType::IsDir
+            } else {
+                PathType::IsFile
+            }
+        })
+    };
+
+    unsafe {
+        write_try_pathtype_result(ret_ptr, result, roc_ops);
+    }
+}
+
+/// Hosted function: Stderr.line!
 /// Takes Str, returns {}
 extern "C" fn hosted_stderr_line(
     _ops: *const RocOps,
@@ -414,7 +620,7 @@ extern "C" fn hosted_stderr_line(
     }
 }
 
-/// Hosted function: Stderr.write! (index 14)
+/// Hosted function: Stderr.write! (index 17)
 /// Takes Str, returns {}
 extern "C" fn hosted_stderr_write(
     _ops: *const RocOps,
@@ -431,7 +637,7 @@ extern "C" fn hosted_stderr_write(
     }
 }
 
-/// Hosted function: Stdin.line! (index 15)
+/// Hosted function: Stdin.line! (index 18)
 /// Takes {}, returns Str
 extern "C" fn hosted_stdin_line(
     ops: *const RocOps,
@@ -452,7 +658,7 @@ extern "C" fn hosted_stdin_line(
     }
 }
 
-/// Hosted function: Stdout.line! (index 16)
+/// Hosted function: Stdout.line! (index 19)
 /// Takes Str, returns {}
 extern "C" fn hosted_stdout_line(
     _ops: *const RocOps,
@@ -469,7 +675,7 @@ extern "C" fn hosted_stdout_line(
     }
 }
 
-/// Hosted function: Stdout.write! (index 17)
+/// Hosted function: Stdout.write! (index 20)
 /// Takes Str, returns {}
 extern "C" fn hosted_stdout_write(
     _ops: *const RocOps,
@@ -487,25 +693,30 @@ extern "C" fn hosted_stdout_write(
 }
 
 /// Array of hosted function pointers, sorted alphabetically by fully-qualified name.
-static HOSTED_FNS: [HostedFn; 18] = [
-    hosted_dir_create,      // Dir.create! (index 0)
-    hosted_dir_create_all,  // Dir.create_all! (index 1)
-    hosted_dir_delete_all,  // Dir.delete_all! (index 2)
-    hosted_dir_delete_empty, // Dir.delete_empty! (index 3)
-    hosted_dir_list,        // Dir.list! (index 4)
-    hosted_env_cwd,         // Env.cwd! (index 5)
-    hosted_env_exe_path,    // Env.exe_path! (index 6)
-    hosted_env_var,         // Env.var! (index 7)
-    hosted_file_delete,     // File.delete! (index 8)
-    hosted_file_read_bytes, // File.read_bytes! (index 9)
-    hosted_file_read_utf8,  // File.read_utf8! (index 10)
-    hosted_file_write_bytes, // File.write_bytes! (index 11)
-    hosted_file_write_utf8, // File.write_utf8! (index 12)
-    hosted_stderr_line,     // Stderr.line! (index 13)
-    hosted_stderr_write,    // Stderr.write! (index 14)
-    hosted_stdin_line,      // Stdin.line! (index 15)
-    hosted_stdout_line,     // Stdout.line! (index 16)
-    hosted_stdout_write,    // Stdout.write! (index 17)
+/// IMPORTANT: Order must match the order Roc expects based on alphabetical sorting.
+static HOSTED_FNS: [HostedFn; 22] = [
+    hosted_dir_create,       // Dir.create!
+    hosted_dir_create_all,   // Dir.create_all!
+    hosted_dir_delete_all,   // Dir.delete_all!
+    hosted_dir_delete_empty, // Dir.delete_empty!
+    hosted_dir_list,         // Dir.list!
+    hosted_env_cwd,          // Env.cwd!
+    hosted_env_exe_path,     // Env.exe_path!
+    hosted_env_var,          // Env.var!
+    hosted_file_delete,      // File.delete!
+    hosted_file_read_bytes,  // File.read_bytes!
+    hosted_file_read_utf8,   // File.read_utf8!
+    hosted_file_write_bytes, // File.write_bytes!
+    hosted_file_write_utf8,  // File.write_utf8!
+    hosted_path_is_dir,      // Path.is_dir!
+    hosted_path_is_file,     // Path.is_file!
+    hosted_path_is_sym_link, // Path.is_sym_link!
+    hosted_path_type,        // Path.type!
+    hosted_stderr_line,      // Stderr.line!
+    hosted_stderr_write,     // Stderr.write!
+    hosted_stdin_line,       // Stdin.line!
+    hosted_stdout_line,      // Stdout.line!
+    hosted_stdout_write,     // Stdout.write!
 ];
 
 /// Build a RocList<RocStr> from command-line arguments.

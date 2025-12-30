@@ -17,6 +17,19 @@ path = "src/main.rs"
 [dependencies]
 libc = "0.2"
 roc_std_new = { git = "https://github.com/roc-lang/roc", rev = "8753d9a30189d878b54d2a4981becf88ad4bbb1a" }
+roc_io_error = { path = "crates/roc_io_error" }
+
+[workspace]
+members = ["crates/roc_io_error"]
+
+[workspace.package]
+authors = ["The Roc Contributors"]
+edition = "2021"
+license = "UPL-1.0"
+version = "0.0.1"
+
+[workspace.dependencies]
+roc_std_new = { git = "https://github.com/roc-lang/roc", rev = "8753d9a30189d878b54d2a4981becf88ad4bbb1a" }
 
 [profile.release]
 lto = true
