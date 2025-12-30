@@ -725,6 +725,70 @@ extern "C" fn hosted_path_type(
     }
 }
 
+// ============================================================================
+// Random Module Types and Functions
+// ============================================================================
+
+/// Type alias for the Random error type: [RandomErr(IOErr)] in Roc
+type RandomErr = RocSingleTagWrapper<roc_io_error::IOErr>;
+
+/// Type alias for Try(U32, [RandomErr(IOErr)])
+type TryU32RandomErr = RocTry<u32, RandomErr>;
+
+/// Type alias for Try(U64, [RandomErr(IOErr)])
+type TryU64RandomErr = RocTry<u64, RandomErr>;
+
+/// Hosted function: Random.seed_u32!
+/// Takes {}, returns Try(U32, [RandomErr(IOErr)])
+extern "C" fn hosted_random_seed_u32(
+    ops: *const RocOps,
+    ret_ptr: *mut c_void,
+    _args_ptr: *mut c_void,
+) {
+    let roc_ops = unsafe { &*ops };
+    let result = roc_random::random_u32(roc_ops);
+
+    let try_result: TryU32RandomErr = match result {
+        Ok(value) => RocTry::ok(value),
+        Err(io_err) => RocTry::err(RocSingleTagWrapper::new(io_err)),
+    };
+
+    unsafe {
+        std::ptr::write(ret_ptr as *mut TryU32RandomErr, try_result);
+    }
+}
+
+/// Hosted function: Random.seed_u64!
+/// Takes {}, returns Try(U64, [RandomErr(IOErr)])
+extern "C" fn hosted_random_seed_u64(
+    ops: *const RocOps,
+    ret_ptr: *mut c_void,
+    _args_ptr: *mut c_void,
+) {
+    let roc_ops = unsafe { &*ops };
+    let result = roc_random::random_u64(roc_ops);
+
+    let try_result: TryU64RandomErr = match result {
+        Ok(value) => RocTry::ok(value),
+        Err(io_err) => RocTry::err(RocSingleTagWrapper::new(io_err)),
+    };
+
+    unsafe {
+        std::ptr::write(ret_ptr as *mut TryU64RandomErr, try_result);
+    }
+}
+
+/// Hosted function: Sleep.millis!
+/// Takes U64, returns {}
+extern "C" fn hosted_sleep_millis(
+    _ops: *const RocOps,
+    _ret_ptr: *mut c_void,
+    args_ptr: *mut c_void,
+) {
+    let millis = unsafe { *(args_ptr as *const u64) };
+    std::thread::sleep(std::time::Duration::from_millis(millis));
+}
+
 /// Hosted function: Stderr.line!
 /// Takes Str, returns {}
 extern "C" fn hosted_stderr_line(
@@ -797,7 +861,7 @@ extern "C" fn hosted_stdout_line(
     }
 }
 
-/// Hosted function: Stdout.write! (index 20)
+/// Hosted function: Stdout.write!
 /// Takes Str, returns {}
 extern "C" fn hosted_stdout_write(
     _ops: *const RocOps,
@@ -814,31 +878,54 @@ extern "C" fn hosted_stdout_write(
     }
 }
 
+/// Hosted function: Utc.now!
+/// Takes {}, returns U128 (nanoseconds since Unix epoch)
+extern "C" fn hosted_utc_now(
+    _ops: *const RocOps,
+    ret_ptr: *mut c_void,
+    _args_ptr: *mut c_void,
+) {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let since_epoch = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("time went backwards");
+    let nanos: u128 = since_epoch.as_nanos();
+
+    unsafe {
+        *(ret_ptr as *mut u128) = nanos;
+    }
+}
+
 /// Array of hosted function pointers, sorted alphabetically by fully-qualified name.
 /// IMPORTANT: Order must match the order Roc expects based on alphabetical sorting.
-static HOSTED_FNS: [HostedFn; 22] = [
-    hosted_dir_create,       // Dir.create!
-    hosted_dir_create_all,   // Dir.create_all!
-    hosted_dir_delete_all,   // Dir.delete_all!
-    hosted_dir_delete_empty, // Dir.delete_empty!
-    hosted_dir_list,         // Dir.list!
-    hosted_env_cwd,          // Env.cwd!
-    hosted_env_exe_path,     // Env.exe_path!
-    hosted_env_var,          // Env.var!
-    hosted_file_delete,      // File.delete!
-    hosted_file_read_bytes,  // File.read_bytes!
-    hosted_file_read_utf8,   // File.read_utf8!
-    hosted_file_write_bytes, // File.write_bytes!
-    hosted_file_write_utf8,  // File.write_utf8!
-    hosted_path_is_dir,      // Path.is_dir!
-    hosted_path_is_file,     // Path.is_file!
-    hosted_path_is_sym_link, // Path.is_sym_link!
-    hosted_path_type,        // Path.type!
-    hosted_stderr_line,      // Stderr.line!
-    hosted_stderr_write,     // Stderr.write!
-    hosted_stdin_line,       // Stdin.line!
-    hosted_stdout_line,      // Stdout.line!
-    hosted_stdout_write,     // Stdout.write!
+static HOSTED_FNS: [HostedFn; 26] = [
+    hosted_dir_create,        // 0:  Dir.create!
+    hosted_dir_create_all,    // 1:  Dir.create_all!
+    hosted_dir_delete_all,    // 2:  Dir.delete_all!
+    hosted_dir_delete_empty,  // 3:  Dir.delete_empty!
+    hosted_dir_list,          // 4:  Dir.list!
+    hosted_env_cwd,           // 5:  Env.cwd!
+    hosted_env_exe_path,      // 6:  Env.exe_path!
+    hosted_env_var,           // 7:  Env.var!
+    hosted_file_delete,       // 8:  File.delete!
+    hosted_file_read_bytes,   // 9:  File.read_bytes!
+    hosted_file_read_utf8,    // 10: File.read_utf8!
+    hosted_file_write_bytes,  // 11: File.write_bytes!
+    hosted_file_write_utf8,   // 12: File.write_utf8!
+    hosted_path_is_dir,       // 13: Path.is_dir!
+    hosted_path_is_file,      // 14: Path.is_file!
+    hosted_path_is_sym_link,  // 15: Path.is_sym_link!
+    hosted_path_type,         // 16: Path.type!
+    hosted_random_seed_u32,   // 17: Random.seed_u32!
+    hosted_random_seed_u64,   // 18: Random.seed_u64!
+    hosted_sleep_millis,      // 19: Sleep.millis!
+    hosted_stderr_line,       // 20: Stderr.line!
+    hosted_stderr_write,      // 21: Stderr.write!
+    hosted_stdin_line,        // 22: Stdin.line!
+    hosted_stdout_line,       // 23: Stdout.line!
+    hosted_stdout_write,      // 24: Stdout.write!
+    hosted_utc_now,           // 25: Utc.now!
 ];
 
 /// Build a RocList<RocStr> from command-line arguments.

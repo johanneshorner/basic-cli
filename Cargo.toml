@@ -10,26 +10,37 @@ repository = "https://github.com/roc-lang/basic-cli"
 name = "host"
 crate-type = ["staticlib"]
 
-[[bin]]
-name = "host"
-path = "src/main.rs"
-
 [dependencies]
 libc = "0.2"
-roc_std_new = { git = "https://github.com/roc-lang/roc", rev = "8753d9a30189d878b54d2a4981becf88ad4bbb1a" }
-roc_io_error = { path = "crates/roc_io_error" }
+roc_std_new.workspace = true
+roc_io_error.workspace = true
+roc_random.workspace = true
 
 [workspace]
-members = ["crates/roc_io_error"]
+members = [
+    "crates/roc_io_error",
+    "crates/roc_random",
+]
 
 [workspace.package]
 authors = ["The Roc Contributors"]
 edition = "2021"
 license = "UPL-1.0"
 version = "0.0.1"
+repository = "https://github.com/roc-lang/basic-cli"
 
 [workspace.dependencies]
+# Core Roc types
 roc_std_new = { git = "https://github.com/roc-lang/roc", rev = "8753d9a30189d878b54d2a4981becf88ad4bbb1a" }
+
+# Internal crates
+roc_io_error = { path = "crates/roc_io_error" }
+roc_random = { path = "crates/roc_random" }
+
+# External dependencies
+getrandom = "0.2"
+sys-locale = "0.3"
+libc = "0.2"
 
 [profile.release]
 lto = true
