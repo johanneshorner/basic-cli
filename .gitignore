@@ -59,6 +59,9 @@ out.txt
 # local roc folder for testing
 roc_nightly
 
+# Roc source built by CI
+roc-src
+
 # see examples/dir.roc
 dirExampleE
 dirExampleA
