@@ -1,7 +1,8 @@
 //! Roc platform host implementation for basic-cli using the new RocOps-based ABI.
 
 use std::ffi::c_void;
-use std::io::{self, Write};
+use std::fs;
+use std::io::{self, BufRead, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use roc_std_new::{
@@ -173,7 +174,145 @@ extern "C" fn roc_crashed_fn(roc_crashed: *const RocCrashed, _env: *mut c_void) 
 // Hosted Functions (sorted alphabetically by fully-qualified name)
 // ============================================================================
 
-/// Hosted function: Stderr.line! (index 0)
+/// Hosted function: Env.cwd! (index 0)
+/// Takes {}, returns Str
+extern "C" fn hosted_env_cwd(
+    ops: *const RocOps,
+    ret_ptr: *mut c_void,
+    _args_ptr: *mut c_void,
+) {
+    let roc_ops = unsafe { &*ops };
+    let cwd = std::env::current_dir()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let roc_str = RocStr::from_str(&cwd, roc_ops);
+    unsafe {
+        *(ret_ptr as *mut RocStr) = roc_str;
+    }
+}
+
+/// Hosted function: Env.exe_path! (index 1)
+/// Takes {}, returns Str
+extern "C" fn hosted_env_exe_path(
+    ops: *const RocOps,
+    ret_ptr: *mut c_void,
+    _args_ptr: *mut c_void,
+) {
+    let roc_ops = unsafe { &*ops };
+    let exe_path = std::env::current_exe()
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let roc_str = RocStr::from_str(&exe_path, roc_ops);
+    unsafe {
+        *(ret_ptr as *mut RocStr) = roc_str;
+    }
+}
+
+/// Hosted function: Env.var! (index 2)
+/// Takes Str, returns Str
+extern "C" fn hosted_env_var(
+    ops: *const RocOps,
+    ret_ptr: *mut c_void,
+    args_ptr: *mut c_void,
+) {
+    let roc_ops = unsafe { &*ops };
+    let name = unsafe {
+        let args = args_ptr as *const RocStr;
+        (*args).as_str()
+    };
+    let value = std::env::var(name).unwrap_or_default();
+    let roc_str = RocStr::from_str(&value, roc_ops);
+    unsafe {
+        *(ret_ptr as *mut RocStr) = roc_str;
+    }
+}
+
+/// Hosted function: File.delete! (index 3)
+/// Takes Str (path), returns {}
+extern "C" fn hosted_file_delete(
+    _ops: *const RocOps,
+    _ret_ptr: *mut c_void,
+    args_ptr: *mut c_void,
+) {
+    let path = unsafe {
+        let args = args_ptr as *const RocStr;
+        (*args).as_str()
+    };
+    let _ = fs::remove_file(path);
+}
+
+/// Hosted function: File.read_bytes! (index 4)
+/// Takes Str (path), returns List(U8)
+extern "C" fn hosted_file_read_bytes(
+    ops: *const RocOps,
+    ret_ptr: *mut c_void,
+    args_ptr: *mut c_void,
+) {
+    let roc_ops = unsafe { &*ops };
+    let path = unsafe {
+        let args = args_ptr as *const RocStr;
+        (*args).as_str()
+    };
+    let bytes = fs::read(path).unwrap_or_default();
+    let mut list = RocList::with_capacity(bytes.len(), roc_ops);
+    for byte in bytes {
+        list.push(byte, roc_ops);
+    }
+    unsafe {
+        *(ret_ptr as *mut RocList<u8>) = list;
+    }
+}
+
+/// Hosted function: File.read_utf8! (index 5)
+/// Takes Str (path), returns Str
+extern "C" fn hosted_file_read_utf8(
+    ops: *const RocOps,
+    ret_ptr: *mut c_void,
+    args_ptr: *mut c_void,
+) {
+    let roc_ops = unsafe { &*ops };
+    let path = unsafe {
+        let args = args_ptr as *const RocStr;
+        (*args).as_str()
+    };
+    let content = fs::read_to_string(path).unwrap_or_default();
+    let roc_str = RocStr::from_str(&content, roc_ops);
+    unsafe {
+        *(ret_ptr as *mut RocStr) = roc_str;
+    }
+}
+
+/// Hosted function: File.write_bytes! (index 6)
+/// Takes (Str, List(U8)), returns {}
+extern "C" fn hosted_file_write_bytes(
+    _ops: *const RocOps,
+    _ret_ptr: *mut c_void,
+    args_ptr: *mut c_void,
+) {
+    unsafe {
+        // Args are (Str, List(U8)) - a tuple/record
+        let args = args_ptr as *const (RocStr, RocList<u8>);
+        let (path, bytes) = &*args;
+        let _ = fs::write(path.as_str(), bytes.as_slice());
+    }
+}
+
+/// Hosted function: File.write_utf8! (index 7)
+/// Takes (Str, Str), returns {}
+extern "C" fn hosted_file_write_utf8(
+    _ops: *const RocOps,
+    _ret_ptr: *mut c_void,
+    args_ptr: *mut c_void,
+) {
+    unsafe {
+        // Args are (Str, Str) - a tuple
+        let args = args_ptr as *const (RocStr, RocStr);
+        let (path, content) = &*args;
+        let _ = fs::write(path.as_str(), content.as_str());
+    }
+}
+
+/// Hosted function: Stderr.line! (index 8)
 /// Takes Str, returns {}
 extern "C" fn hosted_stderr_line(
     _ops: *const RocOps,
@@ -190,7 +329,28 @@ extern "C" fn hosted_stderr_line(
     }
 }
 
-/// Hosted function: Stdout.line! (index 1)
+/// Hosted function: Stdin.line! (index 9)
+/// Takes {}, returns Str
+extern "C" fn hosted_stdin_line(
+    ops: *const RocOps,
+    ret_ptr: *mut c_void,
+    _args_ptr: *mut c_void,
+) {
+    let mut line = String::new();
+    let _ = io::stdin().lock().read_line(&mut line);
+
+    // Create RocStr - ownership transfers to Roc
+    let roc_ops = unsafe { &*ops };
+    // Trim the trailing newline
+    let roc_str = RocStr::from_str(line.trim_end_matches('\n'), roc_ops);
+
+    unsafe {
+        *(ret_ptr as *mut RocStr) = roc_str;
+        // DO NOT call decref - ownership transferred to Roc
+    }
+}
+
+/// Hosted function: Stdout.line! (index 10)
 /// Takes Str, returns {}
 extern "C" fn hosted_stdout_line(
     _ops: *const RocOps,
@@ -208,9 +368,18 @@ extern "C" fn hosted_stdout_line(
 }
 
 /// Array of hosted function pointers, sorted alphabetically by fully-qualified name.
-static HOSTED_FNS: [HostedFn; 2] = [
-    hosted_stderr_line, // Stderr.line! (index 0)
-    hosted_stdout_line, // Stdout.line! (index 1)
+static HOSTED_FNS: [HostedFn; 11] = [
+    hosted_env_cwd,         // Env.cwd! (index 0)
+    hosted_env_exe_path,    // Env.exe_path! (index 1)
+    hosted_env_var,         // Env.var! (index 2)
+    hosted_file_delete,     // File.delete! (index 3)
+    hosted_file_read_bytes, // File.read_bytes! (index 4)
+    hosted_file_read_utf8,  // File.read_utf8! (index 5)
+    hosted_file_write_bytes, // File.write_bytes! (index 6)
+    hosted_file_write_utf8, // File.write_utf8! (index 7)
+    hosted_stderr_line,     // Stderr.line! (index 8)
+    hosted_stdin_line,      // Stdin.line! (index 9)
+    hosted_stdout_line,     // Stdout.line! (index 10)
 ];
 
 /// Build a RocList<RocStr> from command-line arguments.

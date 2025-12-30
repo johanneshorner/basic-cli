@@ -76,10 +76,8 @@ ci/check_cargo_versions_match
 # build script artifacts
 build
 
-# Platform prebuilt binaries - these SHOULD be tracked
-# The platform/targets/ directory contains prebuilt static libraries
-# that need to be committed for distribution
-!platform/targets/
+# Platform host libraries (we manually add things to track like crt1.o, libc.a, libunwind.a)
+platform/targets/*/libhost.a
 
 # Cargo lock for reproducible builds
 !Cargo.lock
