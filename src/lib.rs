@@ -7,49 +7,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use roc_std_new::{
     HostedFn, HostedFunctions, RocAlloc, RocCrashed, RocDbg, RocDealloc, RocExpectFailed,
-    RocList, RocOps, RocRealloc, RocStr,
+    RocList, RocOps, RocRealloc, RocResult, RocStr,
 };
-
-/// Roc Try/Result type layout:
-/// - Payload at offset 0 (sized to max of Ok/Err payloads)
-/// - Discriminant immediately after payload (no padding for discriminant)
-/// - Err = 0, Ok = 1 (alphabetically sorted)
-///
-/// IMPORTANT: Single-variant tag unions like [PathErr(IOErr)] do NOT elide
-/// their discriminant in Roc. Use `RocSingleTagWrapper<T>` to represent them.
-#[repr(C)]
-pub struct RocTry<T, E> {
-    payload: RocTryPayload<T, E>,
-    discriminant: u8,
-}
-
-#[repr(C)]
-pub union RocTryPayload<T, E> {
-    ok: core::mem::ManuallyDrop<T>,
-    err: core::mem::ManuallyDrop<E>,
-}
-
-impl<T, E> RocTry<T, E> {
-    /// Create an Ok result (discriminant = 1)
-    pub fn ok(value: T) -> Self {
-        Self {
-            payload: RocTryPayload {
-                ok: core::mem::ManuallyDrop::new(value),
-            },
-            discriminant: 1, // Ok = 1
-        }
-    }
-
-    /// Create an Err result (discriminant = 0)
-    pub fn err(value: E) -> Self {
-        Self {
-            payload: RocTryPayload {
-                err: core::mem::ManuallyDrop::new(value),
-            },
-            discriminant: 0, // Err = 0
-        }
-    }
-}
 
 /// Wrapper for single-variant tag unions like [PathErr(IOErr)].
 ///
@@ -233,10 +192,135 @@ extern "C" fn roc_crashed_fn(roc_crashed: *const RocCrashed, _env: *mut c_void) 
 }
 
 // ============================================================================
+// Cmd Module Types and Functions
+// ============================================================================
+
+/// Type alias for the Cmd error type: [CmdErr(IOErr)] in Roc
+type CmdErr = RocSingleTagWrapper<roc_io_error::IOErr>;
+
+/// Type alias for Try(I32, [CmdErr(IOErr)]) - using official RocResult
+type TryI32CmdErr = RocResult<i32, CmdErr>;
+
+/// Output record: { stderr_utf8_lossy : Str, stdout_utf8 : Str }
+/// Memory layout: Both RocStr are 24 bytes, alphabetical: stderr_utf8_lossy, stdout_utf8
+#[repr(C)]
+pub struct CmdOutputSuccess {
+    pub stderr_utf8_lossy: RocStr,  // offset 0 (24 bytes)
+    pub stdout_utf8: RocStr,        // offset 24 (24 bytes)
+}
+
+/// NonZeroExit error payload: { exit_code : I32, stderr_utf8_lossy : Str, stdout_utf8_lossy : Str }
+/// Memory layout: RocStr (24 bytes) > I32 (4 bytes), so: stderr_utf8_lossy, stdout_utf8_lossy, exit_code
+#[repr(C)]
+pub struct NonZeroExitPayload {
+    pub stderr_utf8_lossy: RocStr,   // offset 0 (24 bytes)
+    pub stdout_utf8_lossy: RocStr,   // offset 24 (24 bytes)
+    pub exit_code: i32,              // offset 48 (4 bytes + padding)
+}
+
+/// Error type for exec_output!: [CmdErr(IOErr), NonZeroExit({ exit_code, stderr, stdout })]
+/// Alphabetically: CmdErr=0, NonZeroExit=1
+#[repr(C)]
+pub union CmdOutputErrPayload {
+    cmd_err: core::mem::ManuallyDrop<roc_io_error::IOErr>,
+    non_zero_exit: core::mem::ManuallyDrop<NonZeroExitPayload>,
+}
+
+#[repr(C)]
+pub struct CmdOutputErr {
+    payload: CmdOutputErrPayload,
+    discriminant: u8, // CmdErr=0, NonZeroExit=1
+}
+
+impl CmdOutputErr {
+    pub fn cmd_err(io_err: roc_io_error::IOErr) -> Self {
+        Self {
+            payload: CmdOutputErrPayload {
+                cmd_err: core::mem::ManuallyDrop::new(io_err),
+            },
+            discriminant: 0,
+        }
+    }
+
+    pub fn non_zero_exit(stderr_utf8_lossy: RocStr, stdout_utf8_lossy: RocStr, exit_code: i32) -> Self {
+        Self {
+            payload: CmdOutputErrPayload {
+                non_zero_exit: core::mem::ManuallyDrop::new(NonZeroExitPayload {
+                    stderr_utf8_lossy,
+                    stdout_utf8_lossy,
+                    exit_code,
+                }),
+            },
+            discriminant: 1,
+        }
+    }
+}
+
+/// Type alias for Try({ stderr, stdout }, [CmdErr(IOErr), NonZeroExit(...)]) - using official RocResult
+type TryCmdOutputResult = RocResult<CmdOutputSuccess, CmdOutputErr>;
+
+// ============================================================================
 // Hosted Functions (sorted alphabetically by fully-qualified name)
 // ============================================================================
 
-/// Hosted function: Dir.create! (index 0)
+/// Hosted function: Cmd.exec_exit_code! (index 0)
+/// Takes Command, returns Try(I32, [CmdErr(IOErr)])
+extern "C" fn hosted_cmd_exec_exit_code(
+    ops: *const RocOps,
+    ret_ptr: *mut c_void,
+    args_ptr: *mut c_void,
+) {
+    let roc_ops = unsafe { &*ops };
+    let cmd = unsafe { &*(args_ptr as *const roc_command::Command) };
+
+    let result = roc_command::command_exec_exit_code(cmd, roc_ops);
+
+    let try_result: TryI32CmdErr = match result {
+        Ok(exit_code) => RocResult::ok(exit_code),
+        Err(io_err) => RocResult::err(RocSingleTagWrapper::new(io_err)),
+    };
+
+    unsafe {
+        std::ptr::write(ret_ptr as *mut TryI32CmdErr, try_result);
+    }
+}
+
+/// Hosted function: Cmd.exec_output! (index 1)
+/// Takes Command, returns Try({ stderr_utf8_lossy, stdout_utf8 }, [CmdErr(IOErr), NonZeroExit(...)])
+extern "C" fn hosted_cmd_exec_output(
+    ops: *const RocOps,
+    ret_ptr: *mut c_void,
+    args_ptr: *mut c_void,
+) {
+    let roc_ops = unsafe { &*ops };
+    let cmd = unsafe { &*(args_ptr as *const roc_command::Command) };
+
+    let result = roc_command::command_exec_output(cmd, roc_ops);
+    let try_result: TryCmdOutputResult = match result {
+        roc_command::CommandOutputResult::Success(output) => {
+            RocResult::ok(CmdOutputSuccess {
+                stderr_utf8_lossy: output.stderr_utf8_lossy,
+                stdout_utf8: output.stdout_utf8,
+            })
+        }
+        roc_command::CommandOutputResult::NonZeroExit(failure) => {
+            RocResult::err(CmdOutputErr::non_zero_exit(
+                failure.stderr_utf8_lossy,
+                failure.stdout_utf8_lossy,
+                failure.exit_code,
+            ))
+        }
+        roc_command::CommandOutputResult::Error(io_err) => {
+            RocResult::err(CmdOutputErr::cmd_err(io_err))
+        }
+    };
+
+    unsafe {
+        std::ptr::write(ret_ptr as *mut TryCmdOutputResult, try_result);
+    }
+}
+
+/// Hosted function: Dir.create! (index 2)
 /// Takes Str, returns Try({}, [DirErr(IOErr)])
 extern "C" fn hosted_dir_create(
     ops: *const RocOps,
@@ -249,10 +333,10 @@ extern "C" fn hosted_dir_create(
         fs::create_dir((*path).as_str())
     };
     let try_result: TryUnitDirErr = match result {
-        Ok(()) => RocTry::ok(()),
+        Ok(()) => RocResult::ok(()),
         Err(e) => {
             let io_err = roc_io_error::IOErr::from_io_error(&e, roc_ops);
-            RocTry::err(RocSingleTagWrapper::new(io_err))
+            RocResult::err(RocSingleTagWrapper::new(io_err))
         }
     };
     unsafe {
@@ -273,10 +357,10 @@ extern "C" fn hosted_dir_create_all(
         fs::create_dir_all((*path).as_str())
     };
     let try_result: TryUnitDirErr = match result {
-        Ok(()) => RocTry::ok(()),
+        Ok(()) => RocResult::ok(()),
         Err(e) => {
             let io_err = roc_io_error::IOErr::from_io_error(&e, roc_ops);
-            RocTry::err(RocSingleTagWrapper::new(io_err))
+            RocResult::err(RocSingleTagWrapper::new(io_err))
         }
     };
     unsafe {
@@ -297,10 +381,10 @@ extern "C" fn hosted_dir_delete_all(
         fs::remove_dir_all((*path).as_str())
     };
     let try_result: TryUnitDirErr = match result {
-        Ok(()) => RocTry::ok(()),
+        Ok(()) => RocResult::ok(()),
         Err(e) => {
             let io_err = roc_io_error::IOErr::from_io_error(&e, roc_ops);
-            RocTry::err(RocSingleTagWrapper::new(io_err))
+            RocResult::err(RocSingleTagWrapper::new(io_err))
         }
     };
     unsafe {
@@ -321,10 +405,10 @@ extern "C" fn hosted_dir_delete_empty(
         fs::remove_dir((*path).as_str())
     };
     let try_result: TryUnitDirErr = match result {
-        Ok(()) => RocTry::ok(()),
+        Ok(()) => RocResult::ok(()),
         Err(e) => {
             let io_err = roc_io_error::IOErr::from_io_error(&e, roc_ops);
-            RocTry::err(RocSingleTagWrapper::new(io_err))
+            RocResult::err(RocSingleTagWrapper::new(io_err))
         }
     };
     unsafe {
@@ -358,11 +442,11 @@ extern "C" fn hosted_dir_list(
                 let roc_str = RocStr::from_str(&entry, roc_ops);
                 list.push(roc_str, roc_ops);
             }
-            RocTry::ok(list)
+            RocResult::ok(list)
         }
         Err(e) => {
             let io_err = roc_io_error::IOErr::from_io_error(&e, roc_ops);
-            RocTry::err(RocSingleTagWrapper::new(io_err))
+            RocResult::err(RocSingleTagWrapper::new(io_err))
         }
     };
 
@@ -438,10 +522,10 @@ extern "C" fn hosted_file_delete(
     };
     let result = fs::remove_file(path);
     let try_result: TryUnitFileErr = match result {
-        Ok(()) => RocTry::ok(()),
+        Ok(()) => RocResult::ok(()),
         Err(e) => {
             let io_err = roc_io_error::IOErr::from_io_error(&e, roc_ops);
-            RocTry::err(RocSingleTagWrapper::new(io_err))
+            RocResult::err(RocSingleTagWrapper::new(io_err))
         }
     };
     unsafe {
@@ -468,11 +552,11 @@ extern "C" fn hosted_file_read_bytes(
             for byte in bytes {
                 list.push(byte, roc_ops);
             }
-            RocTry::ok(list)
+            RocResult::ok(list)
         }
         Err(e) => {
             let io_err = roc_io_error::IOErr::from_io_error(&e, roc_ops);
-            RocTry::err(RocSingleTagWrapper::new(io_err))
+            RocResult::err(RocSingleTagWrapper::new(io_err))
         }
     };
     unsafe {
@@ -496,11 +580,11 @@ extern "C" fn hosted_file_read_utf8(
     let try_result: TryStrFileErr = match result {
         Ok(content) => {
             let roc_str = RocStr::from_str(&content, roc_ops);
-            RocTry::ok(roc_str)
+            RocResult::ok(roc_str)
         }
         Err(e) => {
             let io_err = roc_io_error::IOErr::from_io_error(&e, roc_ops);
-            RocTry::err(RocSingleTagWrapper::new(io_err))
+            RocResult::err(RocSingleTagWrapper::new(io_err))
         }
     };
     unsafe {
@@ -523,10 +607,10 @@ extern "C" fn hosted_file_write_bytes(
         fs::write(path.as_str(), bytes.as_slice())
     };
     let try_result: TryUnitFileErr = match result {
-        Ok(()) => RocTry::ok(()),
+        Ok(()) => RocResult::ok(()),
         Err(e) => {
             let io_err = roc_io_error::IOErr::from_io_error(&e, roc_ops);
-            RocTry::err(RocSingleTagWrapper::new(io_err))
+            RocResult::err(RocSingleTagWrapper::new(io_err))
         }
     };
     unsafe {
@@ -549,10 +633,10 @@ extern "C" fn hosted_file_write_utf8(
         fs::write(path.as_str(), content.as_str())
     };
     let try_result: TryUnitFileErr = match result {
-        Ok(()) => RocTry::ok(()),
+        Ok(()) => RocResult::ok(()),
         Err(e) => {
             let io_err = roc_io_error::IOErr::from_io_error(&e, roc_ops);
-            RocTry::err(RocSingleTagWrapper::new(io_err))
+            RocResult::err(RocSingleTagWrapper::new(io_err))
         }
     };
     unsafe {
@@ -564,40 +648,40 @@ extern "C" fn hosted_file_write_utf8(
 type PathErr = RocSingleTagWrapper<roc_io_error::IOErr>;
 
 /// Type alias for Try(Bool, [PathErr(IOErr)]) - used by Path.is_file!, etc.
-type TryBoolPathErr = RocTry<bool, PathErr>;
+type TryBoolPathErr = RocResult<bool, PathErr>;
 
 /// Type alias for the File error type: [FileErr(IOErr)] in Roc
 type FileErr = RocSingleTagWrapper<roc_io_error::IOErr>;
 
 /// Type alias for Try({}, [FileErr(IOErr)]) - used by File.write_*, File.delete!
-type TryUnitFileErr = RocTry<(), FileErr>;
+type TryUnitFileErr = RocResult<(), FileErr>;
 
 /// Type alias for Try(Str, [FileErr(IOErr)]) - used by File.read_utf8!
-type TryStrFileErr = RocTry<RocStr, FileErr>;
+type TryStrFileErr = RocResult<RocStr, FileErr>;
 
 /// Type alias for Try(List(U8), [FileErr(IOErr)]) - used by File.read_bytes!
-type TryBytesFileErr = RocTry<RocList<u8>, FileErr>;
+type TryBytesFileErr = RocResult<RocList<u8>, FileErr>;
 
 /// Type alias for the Dir error type: [DirErr(IOErr)] in Roc
 type DirErr = RocSingleTagWrapper<roc_io_error::IOErr>;
 
 /// Type alias for Try({}, [DirErr(IOErr)]) - used by Dir.create!, etc.
-type TryUnitDirErr = RocTry<(), DirErr>;
+type TryUnitDirErr = RocResult<(), DirErr>;
 
 /// Type alias for Try(List(Str), [DirErr(IOErr)]) - used by Dir.list!
-type TryListStrDirErr = RocTry<RocList<RocStr>, DirErr>;
+type TryListStrDirErr = RocResult<RocList<RocStr>, DirErr>;
 
-/// Write a Try(Bool, [PathErr(IOErr)]) result to ret_ptr using RocTry
+/// Write a Try(Bool, [PathErr(IOErr)]) result to ret_ptr using RocResult
 unsafe fn write_try_bool_result(
     ret_ptr: *mut c_void,
     result: std::io::Result<bool>,
     roc_ops: &RocOps,
 ) {
     let try_result: TryBoolPathErr = match result {
-        Ok(value) => RocTry::ok(value),
+        Ok(value) => RocResult::ok(value),
         Err(e) => {
             let io_err = roc_io_error::IOErr::from_io_error(&e, roc_ops);
-            RocTry::err(RocSingleTagWrapper::new(io_err))
+            RocResult::err(RocSingleTagWrapper::new(io_err))
         }
     };
 
@@ -679,19 +763,19 @@ pub enum PathType {
 }
 
 /// Type alias for Try(PathType, [PathErr(IOErr)]) - used by Path.type!
-type TryPathTypePathErr = RocTry<PathType, PathErr>;
+type TryPathTypePathErr = RocResult<PathType, PathErr>;
 
-/// Write a Try(PathType, [PathErr(IOErr)]) result to ret_ptr using RocTry
+/// Write a Try(PathType, [PathErr(IOErr)]) result to ret_ptr using RocResult
 unsafe fn write_try_pathtype_result(
     ret_ptr: *mut c_void,
     result: std::io::Result<PathType>,
     roc_ops: &RocOps,
 ) {
     let try_result: TryPathTypePathErr = match result {
-        Ok(path_type) => RocTry::ok(path_type),
+        Ok(path_type) => RocResult::ok(path_type),
         Err(e) => {
             let io_err = roc_io_error::IOErr::from_io_error(&e, roc_ops);
-            RocTry::err(RocSingleTagWrapper::new(io_err))
+            RocResult::err(RocSingleTagWrapper::new(io_err))
         }
     };
 
@@ -732,11 +816,11 @@ extern "C" fn hosted_path_type(
 /// Type alias for the Random error type: [RandomErr(IOErr)] in Roc
 type RandomErr = RocSingleTagWrapper<roc_io_error::IOErr>;
 
-/// Type alias for Try(U32, [RandomErr(IOErr)])
-type TryU32RandomErr = RocTry<u32, RandomErr>;
+/// Type alias for Try(U32, [RandomErr(IOErr)]) - using official RocResult
+type TryU32RandomErr = RocResult<u32, RandomErr>;
 
-/// Type alias for Try(U64, [RandomErr(IOErr)])
-type TryU64RandomErr = RocTry<u64, RandomErr>;
+/// Type alias for Try(U64, [RandomErr(IOErr)]) - using official RocResult
+type TryU64RandomErr = RocResult<u64, RandomErr>;
 
 /// Hosted function: Random.seed_u32!
 /// Takes {}, returns Try(U32, [RandomErr(IOErr)])
@@ -749,8 +833,8 @@ extern "C" fn hosted_random_seed_u32(
     let result = roc_random::random_u32(roc_ops);
 
     let try_result: TryU32RandomErr = match result {
-        Ok(value) => RocTry::ok(value),
-        Err(io_err) => RocTry::err(RocSingleTagWrapper::new(io_err)),
+        Ok(value) => RocResult::ok(value),
+        Err(io_err) => RocResult::err(RocSingleTagWrapper::new(io_err)),
     };
 
     unsafe {
@@ -769,8 +853,8 @@ extern "C" fn hosted_random_seed_u64(
     let result = roc_random::random_u64(roc_ops);
 
     let try_result: TryU64RandomErr = match result {
-        Ok(value) => RocTry::ok(value),
-        Err(io_err) => RocTry::err(RocSingleTagWrapper::new(io_err)),
+        Ok(value) => RocResult::ok(value),
+        Err(io_err) => RocResult::err(RocSingleTagWrapper::new(io_err)),
     };
 
     unsafe {
@@ -899,33 +983,35 @@ extern "C" fn hosted_utc_now(
 
 /// Array of hosted function pointers, sorted alphabetically by fully-qualified name.
 /// IMPORTANT: Order must match the order Roc expects based on alphabetical sorting.
-static HOSTED_FNS: [HostedFn; 26] = [
-    hosted_dir_create,        // 0:  Dir.create!
-    hosted_dir_create_all,    // 1:  Dir.create_all!
-    hosted_dir_delete_all,    // 2:  Dir.delete_all!
-    hosted_dir_delete_empty,  // 3:  Dir.delete_empty!
-    hosted_dir_list,          // 4:  Dir.list!
-    hosted_env_cwd,           // 5:  Env.cwd!
-    hosted_env_exe_path,      // 6:  Env.exe_path!
-    hosted_env_var,           // 7:  Env.var!
-    hosted_file_delete,       // 8:  File.delete!
-    hosted_file_read_bytes,   // 9:  File.read_bytes!
-    hosted_file_read_utf8,    // 10: File.read_utf8!
-    hosted_file_write_bytes,  // 11: File.write_bytes!
-    hosted_file_write_utf8,   // 12: File.write_utf8!
-    hosted_path_is_dir,       // 13: Path.is_dir!
-    hosted_path_is_file,      // 14: Path.is_file!
-    hosted_path_is_sym_link,  // 15: Path.is_sym_link!
-    hosted_path_type,         // 16: Path.type!
-    hosted_random_seed_u32,   // 17: Random.seed_u32!
-    hosted_random_seed_u64,   // 18: Random.seed_u64!
-    hosted_sleep_millis,      // 19: Sleep.millis!
-    hosted_stderr_line,       // 20: Stderr.line!
-    hosted_stderr_write,      // 21: Stderr.write!
-    hosted_stdin_line,        // 22: Stdin.line!
-    hosted_stdout_line,       // 23: Stdout.line!
-    hosted_stdout_write,      // 24: Stdout.write!
-    hosted_utc_now,           // 25: Utc.now!
+static HOSTED_FNS: [HostedFn; 28] = [
+    hosted_cmd_exec_exit_code, // 0:  Cmd.exec_exit_code!
+    hosted_cmd_exec_output,    // 1:  Cmd.exec_output!
+    hosted_dir_create,         // 2:  Dir.create!
+    hosted_dir_create_all,     // 3:  Dir.create_all!
+    hosted_dir_delete_all,     // 4:  Dir.delete_all!
+    hosted_dir_delete_empty,   // 5:  Dir.delete_empty!
+    hosted_dir_list,           // 6:  Dir.list!
+    hosted_env_cwd,            // 7:  Env.cwd!
+    hosted_env_exe_path,       // 8:  Env.exe_path!
+    hosted_env_var,            // 9:  Env.var!
+    hosted_file_delete,        // 10: File.delete!
+    hosted_file_read_bytes,    // 11: File.read_bytes!
+    hosted_file_read_utf8,     // 12: File.read_utf8!
+    hosted_file_write_bytes,   // 13: File.write_bytes!
+    hosted_file_write_utf8,    // 14: File.write_utf8!
+    hosted_path_is_dir,        // 15: Path.is_dir!
+    hosted_path_is_file,       // 16: Path.is_file!
+    hosted_path_is_sym_link,   // 17: Path.is_sym_link!
+    hosted_path_type,          // 18: Path.type!
+    hosted_random_seed_u32,    // 19: Random.seed_u32!
+    hosted_random_seed_u64,    // 20: Random.seed_u64!
+    hosted_sleep_millis,       // 21: Sleep.millis!
+    hosted_stderr_line,        // 22: Stderr.line!
+    hosted_stderr_write,       // 23: Stderr.write!
+    hosted_stdin_line,         // 24: Stdin.line!
+    hosted_stdout_line,        // 25: Stdout.line!
+    hosted_stdout_write,       // 26: Stdout.write!
+    hosted_utc_now,            // 27: Utc.now!
 ];
 
 /// Build a RocList<RocStr> from command-line arguments.

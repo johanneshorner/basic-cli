@@ -15,11 +15,13 @@ libc = "0.2"
 roc_std_new.workspace = true
 roc_io_error.workspace = true
 roc_random.workspace = true
+roc_command.workspace = true
 
 [workspace]
 members = [
     "crates/roc_io_error",
     "crates/roc_random",
+    "crates/roc_command",
 ]
 
 [workspace.package]
@@ -36,6 +38,7 @@ roc_std_new = { git = "https://github.com/roc-lang/roc", rev = "8753d9a30189d878
 # Internal crates
 roc_io_error = { path = "crates/roc_io_error" }
 roc_random = { path = "crates/roc_random" }
+roc_command = { path = "crates/roc_command" }
 
 # External dependencies
 getrandom = "0.2"

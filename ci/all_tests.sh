@@ -75,6 +75,9 @@ MIGRATED_EXAMPLES=(
     "print-test"
     "dir-test"
     "path"
+    "command"
+    "time"
+    "random"
 )
 
 EXAMPLES_DIR="${ROOT_DIR}/examples/"

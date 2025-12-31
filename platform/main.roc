@@ -1,6 +1,6 @@
 platform ""
     requires {} { main! : List(Str) => Try({}, [Exit(I32), ..]) }
-    exposes [Dir, Env, File, Path, Random, Sleep, Stdin, Stdout, Stderr, Utc]
+    exposes [Cmd, Dir, Env, File, Path, Random, Sleep, Stdin, Stdout, Stderr, Utc]
     packages {}
     provides { main_for_host! : "main_for_host" }
     targets: {
@@ -13,6 +13,7 @@ platform ""
         }
     }
 
+import Cmd
 import Dir
 import Env
 import File

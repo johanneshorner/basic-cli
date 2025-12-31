@@ -32,10 +32,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d750af042f7ef4f724306de029d18836c26c1765a54a6a3f094cbd23a7267ffa"
 
 [[package]]
+name = "roc_command"
+version = "0.0.1"
+dependencies = [
+ "roc_io_error",
+ "roc_std_new",
+]
+
+[[package]]
 name = "roc_host"
 version = "0.0.1"
 dependencies = [
  "libc",
+ "roc_command",
  "roc_io_error",
  "roc_random",
  "roc_std_new",
