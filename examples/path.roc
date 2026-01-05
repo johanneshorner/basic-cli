@@ -12,13 +12,11 @@ main! = |_args| {
     a = Path.is_file!(path)
     b = Path.is_dir!(path)
     c = Path.is_sym_link!(path)
-    d = Path.type!(path)
 
     Stdout.line!(
         \\is_file: ${Str.inspect(a)}
         \\is_dir: ${Str.inspect(b)}
         \\is_sym_link: ${Str.inspect(c)}
-        \\type: ${Str.inspect(d)}
     )
 
     Ok({})

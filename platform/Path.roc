@@ -25,9 +25,6 @@ Path := [].{
         Other(Str),
     ]
 
-    ## The type of a path - file, directory, or symbolic link.
-    PathType := [IsDir, IsFile, IsSymLink]
-
     ## Returns `Bool.true` if the path exists on disk and is pointing at a regular file.
     ##
     ## This function will traverse symbolic links to query information about the
@@ -45,7 +42,4 @@ Path := [].{
     ## This function will not traverse symbolic links - it checks whether the path
     ## itself is a symlink.
     is_sym_link! : Str => Try(Bool, [PathErr(IOErr)])
-
-    ## Returns the type of the path - whether it's a file, directory, or symbolic link.
-    type! : Str => Try(PathType, [PathErr(IOErr)])
 }

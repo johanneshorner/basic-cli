@@ -14,7 +14,6 @@ set expected_output [normalize_output {
 is_file: Try.Ok(True)
 is_dir: Try.Ok(False)
 is_sym_link: Try.Ok(False)
-type: Try.Ok(IsFile)
 }]
 
 expect $expected_output {

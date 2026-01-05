@@ -751,62 +751,6 @@ extern "C" fn hosted_path_is_sym_link(
     }
 }
 
-/// PathType discriminant values (alphabetically sorted)
-/// IsDir=0, IsFile=1, IsSymLink=2
-#[repr(u8)]
-#[derive(Clone, Copy)]
-pub enum PathType {
-    IsDir = 0,
-    IsFile = 1,
-    IsSymLink = 2,
-}
-
-/// Type alias for Try(PathType, [PathErr(IOErr)]) - used by Path.type!
-type TryPathTypePathErr = RocTry<PathType, PathErr>;
-
-/// Write a Try(PathType, [PathErr(IOErr)]) result to ret_ptr using RocTry
-unsafe fn write_try_pathtype_result(
-    ret_ptr: *mut c_void,
-    result: std::io::Result<PathType>,
-    roc_ops: &RocOps,
-) {
-    let try_result: TryPathTypePathErr = match result {
-        Ok(path_type) => RocTry::ok(path_type),
-        Err(e) => {
-            let io_err = roc_io_error::IOErr::from_io_error(&e, roc_ops);
-            RocTry::err(RocSingleTagWrapper::new(io_err))
-        }
-    };
-
-    std::ptr::write(ret_ptr as *mut TryPathTypePathErr, try_result);
-}
-
-/// Hosted function: Path.type! (index 16)
-/// Takes Str, returns Try(PathType, [PathErr(IOErr)])
-extern "C" fn hosted_path_type(
-    ops: *const RocOps,
-    ret_ptr: *mut c_void,
-    args_ptr: *mut c_void,
-) {
-    let roc_ops = unsafe { &*ops };
-    let result = unsafe {
-        let path = args_ptr as *const RocStr;
-        let path_str = (*path).as_str();
-        std::path::Path::new(path_str).symlink_metadata().map(|m| {
-            if m.is_symlink() {
-                PathType::IsSymLink
-            } else if m.is_dir() {
-                PathType::IsDir
-            } else {
-                PathType::IsFile
-            }
-        })
-    };
-
-    unsafe {
-        write_try_pathtype_result(ret_ptr, result, roc_ops);
-    }
-}
 
 // ============================================================================
 // Random Module Types and Functions
@@ -982,7 +926,7 @@ extern "C" fn hosted_utc_now(
 
 /// Array of hosted function pointers, sorted alphabetically by fully-qualified name.
 /// IMPORTANT: Order must match the order Roc expects based on alphabetical sorting.
-static HOSTED_FNS: [HostedFn; 28] = [
+static HOSTED_FNS: [HostedFn; 27] = [
     hosted_cmd_exec_exit_code, // 0:  Cmd.exec_exit_code!
     hosted_cmd_exec_output,    // 1:  Cmd.exec_output!
     hosted_dir_create,         // 2:  Dir.create!
@@ -1001,9 +945,8 @@ static HOSTED_FNS: [HostedFn; 28] = [
     hosted_path_is_dir,        // 15: Path.is_dir!
     hosted_path_is_file,       // 16: Path.is_file!
     hosted_path_is_sym_link,   // 17: Path.is_sym_link!
-    hosted_path_type,          // 18: Path.type!
-    hosted_random_seed_u32,    // 19: Random.seed_u32!
-    hosted_random_seed_u64,    // 20: Random.seed_u64!
+    hosted_random_seed_u32,    // 18: Random.seed_u32!
+    hosted_random_seed_u64,    // 19: Random.seed_u64!
     hosted_sleep_millis,       // 21: Sleep.millis!
     hosted_stderr_line,        // 22: Stderr.line!
     hosted_stderr_write,       // 23: Stderr.write!
