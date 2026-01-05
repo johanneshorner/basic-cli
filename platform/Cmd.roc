@@ -1,21 +1,17 @@
-Cmd := [].{
+Cmd := {
+    args : List(Str),
+    clear_envs : Bool,
+    envs : List(Str),
+    program : Str,
+}.{
     IOErr := [NotFound, PermissionDenied, BrokenPipe, AlreadyExists, Interrupted, Unsupported, OutOfMemory, Other(Str)]
-
-    ## Command record representing a command to execute.
-    ## Use the builder functions to construct a command.
-    Command : {
-        args : List(Str),
-        clear_envs : Bool,
-        envs : List(Str),
-        program : Str,
-    }
 
     ## Create a new command with the given program name.
     ##
     ## ```roc
     ## cmd = Cmd.new("ls")
     ## ```
-    new : Str -> Command
+    new : Str -> Cmd
     new = |program| {
         args: [],
         clear_envs: Bool.False,
@@ -26,9 +22,9 @@ Cmd := [].{
     ## Add a single argument to the command.
     ##
     ## ```roc
-    ## cmd = Cmd.new("ls") |> Cmd.arg("-l")
+    ## cmd = Cmd.new("ls")->Cmd.arg("-l")
     ## ```
-    arg : Command, Str -> Command
+    arg : Cmd, Str -> Cmd
     arg = |cmd, a| {
         args: List.append(cmd.args, a),
         clear_envs: cmd.clear_envs,
@@ -39,9 +35,9 @@ Cmd := [].{
     ## Add multiple arguments to the command.
     ##
     ## ```roc
-    ## cmd = Cmd.new("ls") |> Cmd.args(["-l", "-a"])
+    ## cmd = Cmd.new("ls")->Cmd.args(["-l", "-a"])
     ## ```
-    args : Command, List(Str) -> Command
+    args : Cmd, List(Str) -> Cmd
     args = |cmd, new_args| {
         args: List.concat(cmd.args, new_args),
         clear_envs: cmd.clear_envs,
@@ -52,9 +48,9 @@ Cmd := [].{
     ## Add a single environment variable to the command.
     ##
     ## ```roc
-    ## cmd = Cmd.new("env") |> Cmd.env("FOO", "bar")
+    ## cmd = Cmd.new("env")->Cmd.env("FOO", "bar")
     ## ```
-    env : Command, Str, Str -> Command
+    env : Cmd, Str, Str -> Cmd
     env = |cmd, key, value| {
         args: cmd.args,
         clear_envs: cmd.clear_envs,
@@ -65,9 +61,9 @@ Cmd := [].{
     ## Add multiple environment variables to the command.
     ##
     ## ```roc
-    ## cmd = Cmd.new("env") |> Cmd.envs([("FOO", "bar"), ("BAZ", "qux")])
+    ## cmd = Cmd.new("env")->Cmd.envs([("FOO", "bar"), ("BAZ", "qux")])
     ## ```
-    envs : Command, List((Str, Str)) -> Command
+    envs : Cmd, List((Str, Str)) -> Cmd
     envs = |cmd, pairs| {
         flat = List.fold(pairs, [], |acc, (k, v)| List.concat(acc, [k, v]))
         {
@@ -82,9 +78,9 @@ Cmd := [].{
     ## Only environment variables added via `env` or `envs` will be available.
     ##
     ## ```roc
-    ## cmd = Cmd.new("env") |> Cmd.clear_envs |> Cmd.env("ONLY_THIS", "visible")
+    ## cmd = Cmd.new("env")->Cmd.clear_envs->Cmd.env("ONLY_THIS", "visible")
     ## ```
-    clear_envs : Command -> Command
+    clear_envs : Cmd -> Cmd
     clear_envs = |cmd| {
         args: cmd.args,
         clear_envs: Bool.True,
@@ -96,9 +92,9 @@ Cmd := [].{
     ## Stdin, stdout, and stderr are inherited from the parent process.
     ##
     ## ```roc
-    ## exit_code = Cmd.exec_exit_code!(Cmd.new("ls") |> Cmd.arg("-l"))?
+    ## exit_code = Cmd.new("ls")->Cmd.arg("-l")->exec_exit_code!()?
     ## ```
-    exec_exit_code! : Command => Try(I32, [CmdErr(IOErr)])
+    exec_exit_code! : Cmd => Try(I32, [CmdErr(IOErr)])
 
     ## Execute command and capture stdout/stderr as UTF-8 strings.
     ## Invalid UTF-8 sequences are replaced with the Unicode replacement character.
@@ -106,12 +102,12 @@ Cmd := [].{
     ## ```roc
     ## cmd_output =
     ##     Cmd.new("echo")
-    ##     |> Cmd.args(["Hi"])
-    ##     |> Cmd.exec_output!()?
+    ##     ->Cmd.args(["Hi"])
+    ##     ->exec_output!()?
     ##
     ## Stdout.line!("Echo output: ${cmd_output.stdout_utf8}")?
     ## ```
-    exec_output! : Command => Try(
+    exec_output! : Cmd => Try(
         { stdout_utf8 : Str, stderr_utf8_lossy : Str },
         [CmdErr(IOErr), NonZeroExit({ exit_code : I32, stdout_utf8_lossy : Str, stderr_utf8_lossy : Str })]
     )
@@ -125,7 +121,7 @@ Cmd := [].{
     ## ```
     exec! : Str, List(Str) => Try({}, [CmdErr(IOErr), ExecFailed({ command : Str, exit_code : I32 })])
     exec! = |program, arguments| {
-        cmd = args(new(program), arguments)
+        cmd = new(program)->args(arguments)
         result = exec_exit_code!(cmd)
         match result {
             Ok(0) => Ok({}),
@@ -139,10 +135,10 @@ Cmd := [].{
     ## Returns Ok if the command exits with code 0.
     ##
     ## ```roc
-    ## cmd = Cmd.new("ls") |> Cmd.args(["-l", "-a"])
-    ## Cmd.exec_cmd!(cmd)?
+    ## cmd = Cmd.new("ls")->Cmd.args(["-l", "-a"])
+    ## cmd->exec_cmd!()?
     ## ```
-    exec_cmd! : Command => Try({}, [CmdErr(IOErr), ExecFailed({ exit_code : I32 })])
+    exec_cmd! : Cmd => Try({}, [CmdErr(IOErr), ExecFailed({ exit_code : I32 })])
     exec_cmd! = |cmd| {
         result = exec_exit_code!(cmd)
         match result {
