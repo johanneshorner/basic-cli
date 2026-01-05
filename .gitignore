@@ -84,3 +84,6 @@ platform/targets/*/libhost.a
 
 # Cargo lock for reproducible builds
 !Cargo.lock
+
+# Bundled platform package
+*.tar.zst

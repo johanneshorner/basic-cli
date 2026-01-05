@@ -62,23 +62,24 @@ impl Command {
 }
 
 /// Output when command succeeds (exit code 0)
+/// Roc type: { stdout_utf8 : Str, stderr_utf8_lossy : Str }
 /// Memory layout: Fields sorted by size descending, then alphabetically.
-/// Both RocList<u8> are 24 bytes, so alphabetical: stderr_bytes, stdout_bytes
+/// Both RocStr are 24 bytes, so alphabetical: stderr_utf8_lossy, stdout_utf8
 #[derive(Clone, Debug)]
 #[repr(C)]
 pub struct CommandOutputSuccess {
-    pub stderr_bytes: RocList<u8>,  // offset 0 (24 bytes)
-    pub stdout_bytes: RocList<u8>,  // offset 24 (24 bytes)
+    pub stderr_utf8_lossy: RocStr,  // offset 0 (24 bytes)
+    pub stdout_utf8: RocStr,        // offset 24 (24 bytes)
 }
 
 impl RocRefcounted for CommandOutputSuccess {
     fn inc(&mut self) {
-        self.stderr_bytes.inc();
-        self.stdout_bytes.inc();
+        self.stderr_utf8_lossy.inc();
+        self.stdout_utf8.inc();
     }
     fn dec(&mut self) {
-        self.stderr_bytes.dec();
-        self.stdout_bytes.dec();
+        self.stderr_utf8_lossy.dec();
+        self.stdout_utf8.dec();
     }
     fn is_refcounted() -> bool {
         true
@@ -86,24 +87,25 @@ impl RocRefcounted for CommandOutputSuccess {
 }
 
 /// Output when command fails (non-zero exit code)
+/// Roc type: { exit_code : I32, stdout_utf8_lossy : Str, stderr_utf8_lossy : Str }
 /// Memory layout: Fields sorted by size descending, then alphabetically.
-/// RocList<u8> (24 bytes) > I32 (4 bytes), so: stderr_bytes (24), stdout_bytes (24), exit_code (4)
+/// RocStr (24 bytes) > I32 (4 bytes), so: stderr_utf8_lossy (24), stdout_utf8_lossy (24), exit_code (4)
 #[derive(Clone, Debug)]
 #[repr(C)]
 pub struct CommandOutputFailure {
-    pub stderr_bytes: RocList<u8>,   // offset 0 (24 bytes)
-    pub stdout_bytes: RocList<u8>,   // offset 24 (24 bytes)
+    pub stderr_utf8_lossy: RocStr,   // offset 0 (24 bytes)
+    pub stdout_utf8_lossy: RocStr,   // offset 24 (24 bytes)
     pub exit_code: i32,              // offset 48 (4 bytes + padding)
 }
 
 impl RocRefcounted for CommandOutputFailure {
     fn inc(&mut self) {
-        self.stderr.inc();
-        self.stdout.inc();
+        self.stderr_utf8_lossy.inc();
+        self.stdout_utf8_lossy.inc();
     }
     fn dec(&mut self) {
-        self.stderr.dec();
-        self.stdout.dec();
+        self.stderr_utf8_lossy.dec();
+        self.stdout_utf8_lossy.dec();
     }
     fn is_refcounted() -> bool {
         true
@@ -143,17 +145,17 @@ pub fn command_exec_exit_code(cmd: &Command, roc_ops: &RocOps) -> Result<i32, IO
 pub fn command_exec_output(cmd: &Command, roc_ops: &RocOps) -> CommandOutputResult {
     match cmd.to_std_command().output() {
         Ok(output) => {
-            let stdout = bytes_to_roc_str_lossy(&output.stdout, roc_ops);
-            let stderr = bytes_to_roc_str_lossy(&output.stderr, roc_ops);
+            let stdout_utf8 = bytes_to_roc_str_lossy(&output.stdout, roc_ops);
+            let stderr_utf8_lossy = bytes_to_roc_str_lossy(&output.stderr, roc_ops);
 
             match output.status.code() {
                 Some(0) => CommandOutputResult::Success(CommandOutputSuccess {
-                    stderr,
-                    stdout,
+                    stderr_utf8_lossy,
+                    stdout_utf8,
                 }),
                 Some(exit_code) => CommandOutputResult::NonZeroExit(CommandOutputFailure {
-                    stderr,
-                    stdout,
+                    stderr_utf8_lossy,
+                    stdout_utf8_lossy: stdout_utf8,
                     exit_code,
                 }),
                 None => CommandOutputResult::Error(

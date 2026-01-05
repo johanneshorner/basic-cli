@@ -9,6 +9,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
 
 [[package]]
+name = "autocfg"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
+
+[[package]]
 name = "cfg-if"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -32,6 +38,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d750af042f7ef4f724306de029d18836c26c1765a54a6a3f094cbd23a7267ffa"
 
 [[package]]
+name = "memoffset"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "488016bfae457b036d996092f6cb448677611ce4449e970ceaf42695203f218a"
+dependencies = [
+ "autocfg",
+]
+
+[[package]]
 name = "roc_command"
 version = "0.0.1"
 dependencies = [
@@ -44,6 +59,7 @@ name = "roc_host"
 version = "0.0.1"
 dependencies = [
  "libc",
+ "memoffset",
  "roc_command",
  "roc_io_error",
  "roc_random",
@@ -69,7 +85,7 @@ dependencies = [
 [[package]]
 name = "roc_std_new"
 version = "0.0.1"
-source = "git+https://github.com/roc-lang/roc?rev=8753d9a30189d878b54d2a4981becf88ad4bbb1a#8753d9a30189d878b54d2a4981becf88ad4bbb1a"
+source = "git+https://github.com/roc-lang/roc?rev=386a79b49fd6d46075bf5bb562e57062e6a53c79#386a79b49fd6d46075bf5bb562e57062e6a53c79"
 dependencies = [
  "arrayvec",
  "static_assertions",

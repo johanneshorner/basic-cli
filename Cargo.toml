@@ -16,6 +16,7 @@ roc_std_new.workspace = true
 roc_io_error.workspace = true
 roc_random.workspace = true
 roc_command.workspace = true
+memoffset = "0.9.1"
 
 [workspace]
 members = [
@@ -33,7 +34,7 @@ repository = "https://github.com/roc-lang/basic-cli"
 
 [workspace.dependencies]
 # Core Roc types
-roc_std_new = { git = "https://github.com/roc-lang/roc", rev = "8753d9a30189d878b54d2a4981becf88ad4bbb1a" }
+roc_std_new = { git = "https://github.com/roc-lang/roc", rev = "386a79b49fd6d46075bf5bb562e57062e6a53c79" }
 
 # Internal crates
 roc_io_error = { path = "crates/roc_io_error" }
