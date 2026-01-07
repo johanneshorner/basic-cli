@@ -9,7 +9,7 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# Limit permissions of the GITHUB_TOKEN
+# Do not add permissions here! Configure them at the job level!
 permissions:
   contents: read
 
@@ -37,9 +37,6 @@ jobs:
         uses: mlugg/setup-zig@v2
         with:
           version: 0.15.2
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
 
       - name: Install expect (Ubuntu)
         if: startsWith(matrix.os, 'ubuntu-')

@@ -14,9 +14,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# Limit permissions of the GITHUB_TOKEN (override at job level as needed)
+# Do not add permissions here! Configure them at the job level!
 permissions:
   contents: read
+
+env:
+  ZIG_VERSION: 0.15.2
 
 jobs:
   build-and-bundle:
@@ -33,14 +36,16 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Zig
-        uses: mlugg/setup-zig@v2
+        uses: mlugg/setup-zig@8d6198c65fb0feaa111df26e6b467fea8345e46f # ratchet:mlugg/setup-zig@v2.0.5
         with:
-          version: 0.15.2
+          version: ${{ env.ZIG_VERSION }}
 
-      - name: Install Rust with cross-compilation targets
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-apple-darwin,aarch64-apple-darwin,x86_64-unknown-linux-musl,aarch64-unknown-linux-musl
+      - name: Install Rust cross-compilation targets
+        run: |
+          rustup target add x86_64-apple-darwin
+          rustup target add aarch64-apple-darwin
+          rustup target add x86_64-unknown-linux-musl
+          rustup target add aarch64-unknown-linux-musl
 
       - name: Build Roc from pinned commit
         run: |
@@ -109,12 +114,9 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Zig
-        uses: mlugg/setup-zig@v2
+        uses: mlugg/setup-zig@8d6198c65fb0feaa111df26e6b467fea8345e46f # ratchet:mlugg/setup-zig@v2.0.5
         with:
-          version: 0.15.2
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+          version: ${{ env.ZIG_VERSION }}
 
       - name: Install expect (Ubuntu)
         if: startsWith(matrix.os, 'ubuntu-')
