@@ -22,7 +22,7 @@ Cmd := {
     ## Add a single argument to the command.
     ##
     ## ```roc
-    ## cmd = Cmd.new("ls")->Cmd.arg("-l")
+    ## cmd = Cmd.new("ls").arg("-l")
     ## ```
     arg : Cmd, Str -> Cmd
     arg = |cmd, a| {
@@ -35,7 +35,7 @@ Cmd := {
     ## Add multiple arguments to the command.
     ##
     ## ```roc
-    ## cmd = Cmd.new("ls")->Cmd.args(["-l", "-a"])
+    ## cmd = Cmd.new("ls").args(["-l", "-a"])
     ## ```
     args : Cmd, List(Str) -> Cmd
     args = |cmd, new_args| {
@@ -48,7 +48,7 @@ Cmd := {
     ## Add a single environment variable to the command.
     ##
     ## ```roc
-    ## cmd = Cmd.new("env")->Cmd.env("FOO", "bar")
+    ## cmd = Cmd.new("env").env("FOO", "bar")
     ## ```
     env : Cmd, Str, Str -> Cmd
     env = |cmd, key, value| {
@@ -61,7 +61,7 @@ Cmd := {
     ## Add multiple environment variables to the command.
     ##
     ## ```roc
-    ## cmd = Cmd.new("env")->Cmd.envs([("FOO", "bar"), ("BAZ", "qux")])
+    ## cmd = Cmd.new("env").envs([("FOO", "bar"), ("BAZ", "qux")])
     ## ```
     envs : Cmd, List((Str, Str)) -> Cmd
     envs = |cmd, pairs| {
@@ -78,7 +78,7 @@ Cmd := {
     ## Only environment variables added via `env` or `envs` will be available.
     ##
     ## ```roc
-    ## cmd = Cmd.new("env")->Cmd.clear_envs->Cmd.env("ONLY_THIS", "visible")
+    ## cmd = Cmd.new("env").clear_envs().env("ONLY_THIS", "visible")
     ## ```
     clear_envs : Cmd -> Cmd
     clear_envs = |cmd| {
@@ -92,7 +92,7 @@ Cmd := {
     ## Stdin, stdout, and stderr are inherited from the parent process.
     ##
     ## ```roc
-    ## exit_code = Cmd.new("ls")->Cmd.arg("-l")->exec_exit_code!()?
+    ## exit_code = Cmd.new("ls").arg("-l").exec_exit_code!()?
     ## ```
     exec_exit_code! : Cmd => Try(I32, [CmdErr(IOErr)])
 
@@ -102,8 +102,8 @@ Cmd := {
     ## ```roc
     ## cmd_output =
     ##     Cmd.new("echo")
-    ##     ->Cmd.args(["Hi"])
-    ##     ->exec_output!()?
+    ##     .args(["Hi"])
+    ##     .exec_output!()?
     ##
     ## Stdout.line!("Echo output: ${cmd_output.stdout_utf8}")?
     ## ```
@@ -121,7 +121,7 @@ Cmd := {
     ## ```
     exec! : Str, List(Str) => Try({}, [CmdErr(IOErr), ExecFailed({ command : Str, exit_code : I32 })])
     exec! = |program, arguments| {
-        cmd = new(program)->args(arguments)
+        cmd = new(program).args(arguments)
         result = exec_exit_code!(cmd)
         match result {
             Ok(0) => Ok({}),
@@ -135,8 +135,7 @@ Cmd := {
     ## Returns Ok if the command exits with code 0.
     ##
     ## ```roc
-    ## cmd = Cmd.new("ls")->Cmd.args(["-l", "-a"])
-    ## cmd->exec_cmd!()?
+    ## Cmd.new("ls").args(["-l", "-a"]).exec_cmd!()?
     ## ```
     exec_cmd! : Cmd => Try({}, [CmdErr(IOErr), ExecFailed({ exit_code : I32 })])
     exec_cmd! = |cmd| {
