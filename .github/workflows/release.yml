@@ -169,7 +169,7 @@ jobs:
 
           # Show diff for verification
           echo "Modified examples:"
-          git diff examples/ | head -50
+          git diff examples/ | head -50 || true
 
       - name: Run tests with bundled platform
         run: |
