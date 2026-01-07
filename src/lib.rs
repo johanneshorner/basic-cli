@@ -1,6 +1,6 @@
 //! Roc platform host implementation for basic-cli using the new RocOps-based ABI.
 
-use std::ffi::c_void;
+use std::ffi::{c_char, c_void};
 use std::fs;
 use std::io::{self, BufRead, Write};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -960,7 +960,7 @@ static HOSTED_FNS: [HostedFn; 27] = [
 ///
 /// Uses argc/argv directly instead of std::env::args() because when built
 /// as a static library, the Rust runtime isn't properly initialized.
-fn build_args_list(argc: i32, argv: *const *const i8, roc_ops: &RocOps) -> RocList<RocStr> {
+fn build_args_list(argc: i32, argv: *const *const c_char, roc_ops: &RocOps) -> RocList<RocStr> {
     if argc <= 0 || argv.is_null() {
         return RocList::empty();
     }
@@ -985,12 +985,12 @@ fn build_args_list(argc: i32, argv: *const *const i8, roc_ops: &RocOps) -> RocLi
 /// C-compatible main entry point for the Roc program.
 /// This is exported so the linker can find it.
 #[no_mangle]
-pub extern "C" fn main(argc: i32, argv: *const *const i8) -> i32 {
+pub extern "C" fn main(argc: i32, argv: *const *const c_char) -> i32 {
     rust_main(argc, argv)
 }
 
 /// Main entry point for the Roc program.
-pub fn rust_main(argc: i32, argv: *const *const i8) -> i32 {
+pub fn rust_main(argc: i32, argv: *const *const c_char) -> i32 {
     // Create the RocOps struct with all callbacks
     // We Box it to ensure stable memory address
     let roc_ops = Box::new(RocOps {
