@@ -14,6 +14,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Limit permissions of the GITHUB_TOKEN (override at job level as needed)
+permissions:
+  contents: read
+
 jobs:
   build-and-bundle:
     name: Build and Bundle Platform

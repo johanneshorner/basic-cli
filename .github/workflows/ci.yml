@@ -9,6 +9,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Limit permissions of the GITHUB_TOKEN
+permissions:
+  contents: read
+
 jobs:
   build-and-test:
     name: test (${{ matrix.os }})
