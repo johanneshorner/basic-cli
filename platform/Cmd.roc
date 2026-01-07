@@ -1,4 +1,4 @@
-Cmd := {
+Cmd :: {
     args : List(Str),
     clear_envs : Bool,
     envs : List(Str),
