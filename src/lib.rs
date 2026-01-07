@@ -957,17 +957,27 @@ static HOSTED_FNS: [HostedFn; 27] = [
 ];
 
 /// Build a RocList<RocStr> from command-line arguments.
-fn build_args_list(roc_ops: &RocOps) -> RocList<RocStr> {
-    let args: Vec<String> = std::env::args().collect();
-
-    if args.is_empty() {
+///
+/// Uses argc/argv directly instead of std::env::args() because when built
+/// as a static library, the Rust runtime isn't properly initialized.
+fn build_args_list(argc: i32, argv: *const *const i8, roc_ops: &RocOps) -> RocList<RocStr> {
+    if argc <= 0 || argv.is_null() {
         return RocList::empty();
     }
 
-    let mut list = RocList::with_capacity(args.len(), roc_ops);
-    for arg in args {
-        let roc_str = RocStr::from_str(&arg, roc_ops);
-        list.push(roc_str, roc_ops);
+    let mut list = RocList::with_capacity(argc as usize, roc_ops);
+
+    for i in 0..argc as isize {
+        unsafe {
+            let arg_ptr = *argv.offset(i);
+            if arg_ptr.is_null() {
+                break;
+            }
+            let c_str = std::ffi::CStr::from_ptr(arg_ptr);
+            let arg = c_str.to_string_lossy();
+            let roc_str = RocStr::from_str(&arg, roc_ops);
+            list.push(roc_str, roc_ops);
+        }
     }
     list
 }
@@ -975,12 +985,12 @@ fn build_args_list(roc_ops: &RocOps) -> RocList<RocStr> {
 /// C-compatible main entry point for the Roc program.
 /// This is exported so the linker can find it.
 #[no_mangle]
-pub extern "C" fn main(_argc: i32, _argv: *const *const i8) -> i32 {
-    rust_main()
+pub extern "C" fn main(argc: i32, argv: *const *const i8) -> i32 {
+    rust_main(argc, argv)
 }
 
 /// Main entry point for the Roc program.
-pub fn rust_main() -> i32 {
+pub fn rust_main(argc: i32, argv: *const *const i8) -> i32 {
     // Create the RocOps struct with all callbacks
     // We Box it to ensure stable memory address
     let roc_ops = Box::new(RocOps {
@@ -997,8 +1007,8 @@ pub fn rust_main() -> i32 {
         },
     });
 
-    // Build List(Str) from command-line arguments
-    let args_list = build_args_list(&roc_ops);
+    // Build List(Str) from command-line arguments (using argc/argv directly)
+    let args_list = build_args_list(argc, argv, &roc_ops);
 
     // Call the Roc main function
     let mut exit_code: i32 = -99;
