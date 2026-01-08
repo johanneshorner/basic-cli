@@ -47,4 +47,7 @@ jobs:
         run: brew install expect
 
       - name: Run all tests
-        run: ./ci/all_tests.sh
+        uses: roc-lang/roc/.github/actions/flaky-retry@main
+        with:
+          command: ./ci/all_tests.sh
+          error_string_contains: "error: unable"

@@ -177,14 +177,16 @@ jobs:
           echo "Modified examples:"
           git diff examples/ | head -50 || true
 
+      # Skip native build since we're using the bundle
+      # The test script will detect all targets exist and use bundle testing
+      # Run all tests against the bundled platform
       - name: Run tests with bundled platform
-        run: |
-          # Skip native build since we're using the bundle
-          # The test script will detect all targets exist and use bundle testing
-          export NO_BUILD=1
-
-          # Run all tests against the bundled platform
-          bash ci/all_tests.sh
+        uses: roc-lang/roc/.github/actions/flaky-retry@main
+        with:
+          command: bash ci/all_tests.sh
+          error_string_contains: "error: unable"
+        env:
+          NO_BUILD: "1"
 
   create-release:
     name: Create GitHub Release
